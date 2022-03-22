@@ -27,7 +27,7 @@ def load_model(path, device, config):
     # get correct architecture configuration
     model_params = FrontnetModel.configs[config]
     # initialize a random model with configuration
-    model = FrontnetModel(**model_params)
+    model = FrontnetModel(**model_params).to(device)
     
     # load the saved model 
     try:

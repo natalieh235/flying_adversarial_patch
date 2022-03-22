@@ -10,14 +10,15 @@ def ucs(model, train_data, delta_shape, device, batch_size = 32, epochs=400, lr=
     Universal, class specific attack
     """
     #target_x = target_y = target_z = target_phi = torch.zeros((batch_size,1), device=device)
-    target_z = torch.ones((batch_size,1), device=device) * -5
+    #target_z = torch.ones((batch_size,1), device=device) * -5
+    target_x = torch.ones((batch_size, 1)).to(device) * 3.
     
-    #delta = torch.zeros(delta_shape, requires_grad=True, device=device)                       # initialize perturbation
+    delta = torch.zeros(delta_shape, requires_grad=True, device=device)                       # initialize perturbation
     affine_transformer = transforms.RandomAffine(degrees=(-70, 70), translate=(0.1, 0.3), scale=(0.1, 0.6))
-    delta = torch.randint(low=-1000, high=1000, size=delta_shape, device=device) / 1000.
-    delta.requires_grad_(True)
+    #delta = torch.randint(low=-1000, high=1000, size=delta_shape, device=device) / 1000.
+    #delta.requires_grad_(True)
 
-    criterion = torch.nn.L1Loss()
+    #criterion = torch.nn.L1Loss()
     #criterion = torch.nn.MSELoss()
     opt = torch.optim.Adam([delta], lr=lr)                                                      # and optimizer
     losses = []
@@ -28,37 +29,38 @@ def ucs(model, train_data, delta_shape, device, batch_size = 32, epochs=400, lr=
             epoch_loss = []
             for _, batch in enumerate(train_data):
                 images, gt_position = batch 
+                images = images.to(device)
                 #adv_example = images + delta                                                
                 # pred_x, pred_y, pred_z, pred_phi = model(adv_example) 
 
                 #transformed_batch = [affine_transfomer(delta) for _ in range(batch_size)]
                 #
-                adv_batch = images.clone()
-                for i, image in enumerate(images):
-                    transformed_delta = affine_transformer(delta)
-                    adv_batch[i] = torch.add(image, transformed_delta)
+                #adv_batch = images.clone()
+                #for i, image in enumerate(images):
+                #    transformed_delta = affine_transformer(delta)
+                #    adv_batch[i] = torch.add(image, transformed_delta)
 
-                #adv_batch = torch.add(images, delta)
+                adv_batch = torch.add(images, delta)
                 adv_batch = torch.clamp(adv_batch, 0., 1.)                  
                 
-                pred = model(adv_batch)                         # Frontnet returns a list of tensors
-                pred = torch.stack(pred)                      # we therefore concatenate the tensors in the list
-                pred = pred.view(gt_position.shape)
-                
-                gt_position = model(images)
-                gt_position = torch.stack(gt_position).view(pred.shape)
-                #pred = pred.T                               # and transpose the new tensor to match the shape of the stored position        
+                pred_x, _, _, _ = model(adv_batch)             # Frontnet returns a list of tensors
+                #pred = torch.stack(pred)                      # we therefore concatenate the tensors in the list
+                #pred = pred.view(gt_position.shape)
+                #print(pred_x.shape)
 
-                #loss_x = criterion(pred_x, target_x)
-                #loss_y = criterion(pred_y, target_y)
-                #loss_z = criterion(pred_z, target_z)
-                #loss_phi = criterion(pred_phi, target_phi)
+                #gt_x, _, _, _ = model(images)
+                #print(gt_x.shape)
+                #print(gt_x[0])
+                #gt_position = model(images)
+                #gt_position = torch.stack(gt_position).view(pred.shape)
+                #pred = pred.T                               # and transpose the new tensor to match the shape of the stored position
 
 
 
                 #loss = loss_x + loss_y + loss_z + loss_phi
                 #loss = loss_z
-                loss = -criterion(pred, gt_position)
+                #loss = -criterion(pred, gt_position)
+                loss = torch.dist(pred_x, target_x, p=2)
                 epoch_loss.append(loss.item())
                 losses.append(loss.item())
 
@@ -67,7 +69,7 @@ def ucs(model, train_data, delta_shape, device, batch_size = 32, epochs=400, lr=
                 loss.backward()                                                                         # calculate the gradient w.r.t. the loss
                 opt.step()                                                                              # update the perturbation
 
-                adv_batch = torch.clamp(adv_batch, 0., 1.)   
+                #adv_batch = torch.clamp(adv_batch, 0., 1.)   
 
                 #delta = torch.clamp(delta, -epsilon, epsilon)                                                    # clip the pixel values to stay in certain range
     except KeyboardInterrupt:
@@ -141,12 +143,12 @@ if __name__=="__main__":
 
     model = load_model(path=model_path, device=device, config=model_config)
     model.eval()
-    dataset = load_dataset(path=dataset_path, batch_size=512, shuffle=True, drop_last=True, num_workers=0)
+    dataset = load_dataset(path=dataset_path, batch_size=32, shuffle=True, drop_last=True, num_workers=0)
 
     #attack_momentum(model, dataset, device)
  
     perturbation_shape = dataset.dataset.data[0].shape
-    perturbation = ucs(model, dataset, perturbation_shape, device, epsilon=1.)
+    perturbation = ucs(model, dataset, perturbation_shape, device, epochs=1000, batch_size=32, lr=1e-4)
     #perturbation = attack_momentum(model, dataset, device)
     perturbation = perturbation.detach().cpu().numpy()
     np.save('perturbation', perturbation)
