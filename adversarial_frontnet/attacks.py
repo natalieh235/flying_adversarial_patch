@@ -101,12 +101,17 @@ def ics(model, image, device, iterations, lr=1e-4):
     
     #affine_transformer = transforms.RandomAffine(degrees=(-70, 70), translate=(0.1, 0.3), scale=(0.1, 0.6))
 
-    delta = torch.zeros(delta_shape, requires_grad=True, device=device)                       # initialize perturbation
+    delta = torch.ones(delta_shape, device=device) * 255.                   # initialize perturbation
     #delta = torch.rand(delta_shape, device=device) * 10.
-    #delta.requires_grad_(True)
+    delta.requires_grad_(True)
 
-    affine_parameters = torch.tensor([70., 0.1, 0.3, 0.5, 180.], requires_grad=True, device=device)
+    affine_parameters = torch.tensor([20., 0.1, 0.3, 0.2, 180.], requires_grad=True, device=device)
     affine_parameters.requires_grad_(True)
+
+    noise_jitter = transforms.Compose([
+                    transforms.ColorJitter(),
+                    transforms.GaussianBlur(kernel_size=(5,9))
+                    ])
 
     opt = torch.optim.Adam([delta, affine_parameters], lr=lr)
 
@@ -121,10 +126,13 @@ def ics(model, image, device, iterations, lr=1e-4):
                            shear=float(affine_parameters[4])
                            )
 
+            mask = get_mask(delta, affine_parameters).to(device)  # get a mask of the placement of the patch in the image
+            image_p = image * mask                              # delete the pixel values in the original image where the mask is
 
-            adv_image = image + patch
+
+            adv_image = image_p + noise_jitter(patch)
             pred_x, pred_y, pred_z, pred_phi = model(adv_image)             # Frontnet returns a list of tensors
-            gt_x, gt_y, gt_z, gt_phi = model(image)
+            #gt_x, gt_y, gt_z, gt_phi = model(image)
 
 
             loss_x = torch.dist(pred_x, target_x, p=2)
@@ -138,6 +146,7 @@ def ics(model, image, device, iterations, lr=1e-4):
 
             t.set_postfix({"Loss": loss.item()}, refresh=True)
             if i % 1000 == 0:
+                print(pred_x)
                 print(affine_parameters.detach().cpu().numpy())
 
             opt.zero_grad() 
@@ -157,6 +166,26 @@ def ics(model, image, device, iterations, lr=1e-4):
     print("Prediction: {}, ground-truth: {}".format(pred_x, gt_x))
     print("Affine transformer parameters: ", affine_parameters.detach().cpu().numpy())
     return delta
+
+
+def get_mask(perturbation, parameters):
+    mask = affine(perturbation.detach().cpu(), angle=float(parameters[0]), 
+                           translate=[int(parameters[1]), int(parameters[2])], 
+                           scale=float(parameters[3]), 
+                           shear=float(parameters[4]),
+                           fill=-255.
+                           )
+
+    for row, column in enumerate(mask[0][0]):
+        for c_idx, value in enumerate(column):
+            if value != -255.:
+                mask[0][0][row][c_idx] = 0.
+            else:
+                mask[0][0][row][c_idx] = 1.
+    
+    return mask
+
+
 
 if __name__=="__main__":
     from util import load_dataset, load_model
