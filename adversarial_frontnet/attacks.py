@@ -120,7 +120,7 @@ def ics(model, image, device, iterations, lr=1e-4):
         for i in t:
             #gt_x, _, _, _ = model(image)
             #patch = affine_transformer(delta)
-            patch = affine(delta, angle=float(affine_parameters[0]), 
+            patch = affine(noise_jitter(delta), angle=float(affine_parameters[0]), 
                            translate=[int(affine_parameters[1]), int(affine_parameters[2])], 
                            scale=float(affine_parameters[3]), 
                            shear=float(affine_parameters[4])
@@ -130,7 +130,7 @@ def ics(model, image, device, iterations, lr=1e-4):
             image_p = image * mask                              # delete the pixel values in the original image where the mask is
 
 
-            adv_image = image_p + noise_jitter(patch)
+            adv_image = image_p + patch
             pred_x, pred_y, pred_z, pred_phi = model(adv_image)             # Frontnet returns a list of tensors
             #gt_x, gt_y, gt_z, gt_phi = model(image)
 
