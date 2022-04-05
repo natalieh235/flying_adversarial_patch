@@ -59,7 +59,7 @@ def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_w
     # load images and labels from the stored dataset
     [images, labels] = DataProcessor.ProcessTestData(path)
     # create a torch dataset from the loaded data
-    dataset = Dataset(images, labels)
+    dataset = Dataset(images[:200], labels[:200])
 
     # for quick and convinient access, create a torch DataLoader with the given parameters
     data_params = {'batch_size': batch_size, 'shuffle': shuffle, 'drop_last':drop_last, 'num_workers': num_workers}

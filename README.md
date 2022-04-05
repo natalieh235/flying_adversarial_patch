@@ -34,7 +34,7 @@ $ python -m pip install -r path/to/repo/adversarial-frontnet/requirements.txt
 To add the virtual environment as a kernel for Jupyter Notebook
 ```bash
 $ python -m pip install ipykernel
-$ python -m ipykernel install --user --name=/path/to/env
+$ python -m ipykernel install --user --name=kernel_name
 ```
 <!-- ### Anaconda Virtual Environment -->
 

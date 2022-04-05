@@ -4,14 +4,15 @@ import torch
 from tqdm import tqdm, trange
 
 from torchvision import transforms
+from torchvision.transforms.functional import affine
 
-def ucs(model, train_data, delta_shape, device, batch_size = 32, epochs=400, lr=1e-3, epsilon=5e-2):
+def ucs(model, train_data, delta_shape, target_value, device, batch_size = 32, epochs=400, lr=1e-3, epsilon=5e-2):
     """
     Universal, class specific attack
     """
     #target_x = target_y = target_z = target_phi = torch.zeros((batch_size,1), device=device)
     #target_z = torch.ones((batch_size,1), device=device) * -5
-    target_x = torch.ones((batch_size, 1)).to(device) * 3.
+    target_x = torch.ones((batch_size, 1)).to(device) * target_value
     
     delta = torch.zeros(delta_shape, requires_grad=True, device=device)                       # initialize perturbation
     affine_transformer = transforms.RandomAffine(degrees=(-70, 70), translate=(0.1, 0.3), scale=(0.1, 0.6))
@@ -20,7 +21,7 @@ def ucs(model, train_data, delta_shape, device, batch_size = 32, epochs=400, lr=
 
     #criterion = torch.nn.L1Loss()
     #criterion = torch.nn.MSELoss()
-    opt = torch.optim.Adam([delta], lr=lr)                                                      # and optimizer
+    opt = torch.optim.Adam([delta], lr=lr) # parameter für affine transformation mit trainieren                                                     # and optimizer
     losses = []
 
     try:
@@ -40,9 +41,14 @@ def ucs(model, train_data, delta_shape, device, batch_size = 32, epochs=400, lr=
                 #    transformed_delta = affine_transformer(delta)
                 #    adv_batch[i] = torch.add(image, transformed_delta)
 
-                adv_batch = torch.add(images, delta)
-                adv_batch = torch.clamp(adv_batch, 0., 1.)                  
+                patch = affine_transformer(delta)
+
+                adv_batch = torch.add(images, patch)#delta)
+                #adv_batch = torch.clamp(adv_batch, 0., 1.)                  
                 
+                # use tanh or sigmoid instead
+
+
                 pred_x, _, _, _ = model(adv_batch)             # Frontnet returns a list of tensors
                 #pred = torch.stack(pred)                      # we therefore concatenate the tensors in the list
                 #pred = pred.view(gt_position.shape)
@@ -60,7 +66,10 @@ def ucs(model, train_data, delta_shape, device, batch_size = 32, epochs=400, lr=
                 #loss = loss_x + loss_y + loss_z + loss_phi
                 #loss = loss_z
                 #loss = -criterion(pred, gt_position)
-                loss = torch.dist(pred_x, target_x, p=2)
+                loss_positon = torch.dist(pred_x, target_x, p=2)
+                
+                loss = loss_positon 
+                
                 epoch_loss.append(loss.item())
                 losses.append(loss.item())
 
@@ -69,9 +78,9 @@ def ucs(model, train_data, delta_shape, device, batch_size = 32, epochs=400, lr=
                 loss.backward()                                                                         # calculate the gradient w.r.t. the loss
                 opt.step()                                                                              # update the perturbation
 
-                #adv_batch = torch.clamp(adv_batch, 0., 1.)   
-
-                #delta = torch.clamp(delta, -epsilon, epsilon)                                                    # clip the pixel values to stay in certain range
+                adv_batch = torch.clamp(adv_batch, 0., 255.)   
+                #delta.data.clamp_(-1., 1.)
+                #delta = torch.clamp(delta, -1., 1.)                                                    # clip the pixel values to stay in certain range
     except KeyboardInterrupt:
         print("Delta in range: ({},{})".format(torch.min(delta.data).item(), torch.max(delta.data).item()))
         return delta             
@@ -79,62 +88,78 @@ def ucs(model, train_data, delta_shape, device, batch_size = 32, epochs=400, lr=
     return delta
 
 
+def ics(model, image, device, iterations, lr=1e-4):
+    for param in model.parameters():
+        param.requires_grad = False 
 
-def attack_momentum(model, dataset, device, epochs=5, epsilon=1.0):
+    delta_shape = image.shape
 
-    delta_shape =  dataset.dataset.data[0].shape
-    print(delta_shape)
-    #delta = torch.zeros(delta_shape, device=device)                       # initialize perturbation
-    delta = torch.randint(low=-1000, high=1000, size=delta_shape, device=device) / 1000.
-    delta.requires_grad_(True)
+    #image = image.to(device) / torch.max(image) #*255.
+    #print(torch.min(image), torch.max(image))
     
-    alpha = 1.
-    g_t = torch.zeros(next(iter(dataset))[0].shape)
-    print(g_t.shape)
-
-    criterion = torch.nn.L1Loss()
-
-    for i in range(epochs):
-        epoch_loss = []
-        for _, batch in enumerate(tqdm(dataset)):
-            images, gt_position = batch
-            
-            images.requires_grad_()
-            delta.requires_grad_()
-            adv_batch = torch.add(images, delta)
-
-            pred = model(adv_batch)                         # Frontnet returns a list of tensors
-            pred = torch.stack(pred)                      # we therefore concatenate the tensors in the list
-            pred = pred.view(gt_position.shape)
-
-            gt_position = model(images)
-            gt_position = torch.stack(gt_position).view(pred.shape)
-
-            loss = - criterion(pred, gt_position)        # maximize the distance between the prediction and the stored true position
-            epoch_loss.append(loss.item())
-            
-            grad = torch.autograd.grad(loss, adv_batch,
-                                        retain_graph=False, create_graph=False)[0]
-
-            grad = grad / torch.norm(grad,p=1)
-            grad = grad + g_t*1.0
-            g_t = grad
-
-
-            adv_batch = adv_batch.detach() + alpha*grad / torch.norm(grad,float('inf'))
-            adv_batch = torch.clamp(adv_batch, min=0., max=1.)
-
-        print("Avg. epoch loss: %.2f" % (np.mean(epoch_loss)))
+    target_x = torch.ones((1, 1)).to(device) * 3.
     
+    #affine_transformer = transforms.RandomAffine(degrees=(-70, 70), translate=(0.1, 0.3), scale=(0.1, 0.6))
+
+    delta = torch.zeros(delta_shape, requires_grad=True, device=device)                       # initialize perturbation
+    #delta = torch.rand(delta_shape, device=device) * 10.
+    #delta.requires_grad_(True)
+
+    affine_parameters = torch.tensor([70., 0.1, 0.3, 0.5, 180.], requires_grad=True, device=device)
+    affine_parameters.requires_grad_(True)
+
+    opt = torch.optim.Adam([delta, affine_parameters], lr=lr)
+
+    try:
+        t = trange(iterations)
+        for i in t:
+            #gt_x, _, _, _ = model(image)
+            #patch = affine_transformer(delta)
+            patch = affine(delta, angle=float(affine_parameters[0]), 
+                           translate=[int(affine_parameters[1]), int(affine_parameters[2])], 
+                           scale=float(affine_parameters[3]), 
+                           shear=float(affine_parameters[4])
+                           )
+
+
+            adv_image = image + patch
+            pred_x, pred_y, pred_z, pred_phi = model(adv_image)             # Frontnet returns a list of tensors
+            gt_x, gt_y, gt_z, gt_phi = model(image)
+
+
+            loss_x = torch.dist(pred_x, target_x, p=2)
+            #loss_y = torch.dist(pred_y, target_y, p=2)
+            #loss_z = torch.dist(pred_z, gt_z, p=2)
+            #loss_phi = torch.dist(pred_phi, gt_phi, p=2)
+            
+            #loss_similarity = torch.dist((image+delta), image, p=2)
+
+            loss = loss_x
+
+            t.set_postfix({"Loss": loss.item()}, refresh=True)
+            if i % 1000 == 0:
+                print(affine_parameters.detach().cpu().numpy())
+
+            opt.zero_grad() 
+            loss.backward()                                                                         # calculate the gradient w.r.t. the loss
+            opt.step()    
+
+            adv_image = torch.clamp(adv_image, 0., 255.)  
+
+            #delta.data.clamp_(-0.3, 0.3)
+            #delta = torch.nn.Tanh()(delta)
+    except KeyboardInterrupt:
+        print("Stop calculating perturbation")
+
+    print("Delta in range: ({},{})".format(torch.min(delta.data).item(), torch.max(delta.data).item()))
+    gt_x, _, _, _ = model(image)
+    pred_x, _, _, _ = model(image + delta)             # Frontnet returns a list of tensors
+    print("Prediction: {}, ground-truth: {}".format(pred_x, gt_x))
+    print("Affine transformer parameters: ", affine_parameters.detach().cpu().numpy())
     return delta
-    #delta_image = delta.detach().cpu().squeeze(0).permute(1,2,0).numpy()
-    #delta_image = Image.fromarray(delta_image)
-    #delta_image.save("perturbation.png")
-
 
 if __name__=="__main__":
     from util import load_dataset, load_model
-    torch.multiprocessing.set_sharing_strategy('file_system')
     model_path = '../pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
     model_config = '160x32'
     dataset_path = '../pulp-frontnet/PyTorch/Data/160x96OthersTrainsetAug.pickle'
@@ -148,7 +173,20 @@ if __name__=="__main__":
     #attack_momentum(model, dataset, device)
  
     perturbation_shape = dataset.dataset.data[0].shape
-    perturbation = ucs(model, dataset, perturbation_shape, device, epochs=1000, batch_size=32, lr=1e-4)
+
+    #print(dataset.dataset)
+    #perturbation = ucs(model, dataset, perturbation_shape, device, epochs=1000000, batch_size=32, lr=1e-4)
     #perturbation = attack_momentum(model, dataset, device)
+
+    # for i, img in enumerate(dataset.dataset.data):
+    #     img = img.to(device).unsqueeze(0)
+    #     gt_x, _, _, _ = model(img)
+    #     if int(gt_x) == 1:
+    #         print(i, gt_x)
+    #         image = img
+    #         break
+    image = dataset.dataset.data[70].unsqueeze(0).to(device)
+    perturbation = ics(model, image, device, 1000000, lr=3e-2)
+
     perturbation = perturbation.detach().cpu().numpy()
-    np.save('perturbation', perturbation)
+    np.save('perturbation_x_3_w_parameters', perturbation)
