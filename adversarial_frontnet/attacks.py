@@ -1,4 +1,3 @@
-from json import load
 import numpy as np
 import torch
 from tqdm import tqdm, trange
@@ -93,23 +92,43 @@ def ics(model, image, device, iterations, lr=1e-4):
         param.requires_grad = False 
 
     delta_shape = image.shape
-    
+
     target_x = torch.ones((1, 1)).to(device) * 3.
 
-    noise_jitter = transforms.Compose([
-                    transforms.ColorJitter(),
-                    transforms.GaussianBlur(kernel_size=(5,9))
-                    ])
+    #noise_jitter = transforms.Compose([
+    #                transforms.ColorJitter(),
+    #                transforms.GaussianBlur(kernel_size=(5,9))
+    #                ])
 
+    in_dim = image.view(-1).shape[0]
+    perturbation_shape = in_dim
+    parameters_shape = 5
 
-    adv_attack = PerturbationModule(delta_shape, device)
+    adv_attack = PerturbationNN(in_dim, perturbation_shape).to(device)#PerturbationModule(delta_shape, device)
     opt = torch.optim.Adam(adv_attack.parameters())
 
     try:
         t = trange(iterations)
         for i in t:
     
-            adv_image = adv_attack(image)
+            perturbation, angle, translate, scale, shear = adv_attack(image)
+            #print(angle, translate, scale, shear)
+            patch = affine(perturbation, angle=float(angle[0]), 
+                           translate=[int(0), int(0)], 
+                           scale=float(scale[0]), 
+                           shear=float(shear[0])
+                           )
+
+            parameters = [angle[0].detach().item(), 0, 
+                          0, scale[0].detach().item(), 
+                          shear[0].detach().item()]
+            
+            bit_mask = get_mask(perturbation, parameters).to(device)
+
+            adv_image = ((image*bit_mask) + perturbation) / 255.
+
+
+            #adv_image = adv_attack(image)
             pred_x, pred_y, pred_z, pred_phi = model(adv_image)             # Frontnet returns a list of tensors
             #gt_x, gt_y, gt_z, gt_phi = model(image)
 
@@ -124,8 +143,10 @@ def ics(model, image, device, iterations, lr=1e-4):
             t.set_postfix({"Loss": loss.item()}, refresh=True)
             if i % 1000 == 0:
                 print(pred_x)
-                print(adv_attack.affine_parameters.detach().cpu().numpy())
-
+                #print(adv_attack.affine_parameters.detach().cpu().numpy())
+                print(angle[0].detach().item(), translate[0][0].detach().item(), 
+                      translate[0][1].detach().item(), scale[0].detach().item(), 
+                      shear[0].detach().item())
             opt.zero_grad() 
             loss.backward()                                                                         # calculate the gradient w.r.t. the loss
             opt.step()    
@@ -135,12 +156,46 @@ def ics(model, image, device, iterations, lr=1e-4):
     except KeyboardInterrupt:
         print("Stop calculating perturbation")
 
-    print("Delta in range: ({},{})".format(torch.min(adv_attack.perturbation.data).item(), torch.max(adv_attack.perturbation.data).item()))
+    print("Delta in range: ({},{})".format(torch.min(perturbation.data).item(), torch.max(perturbation.data).item()))
     gt_x, _, _, _ = model(image)
     pred_x, _, _, _ = model(adv_image)         
     print("Prediction: {}, ground-truth: {}".format(pred_x, gt_x))
-    print("Affine transformer parameters: ", adv_attack.affine_parameters.detach().cpu().numpy())
-    return adv_attack.perturbation
+    print("Affine transformer parameters: ", angle[0].detach().item(), translate[0][0].detach().item(), 
+                                             translate[0][1].detach().item(), scale[0].detach().item(), 
+                                             shear[0].detach().item())
+    return perturbation
+
+
+class PerturbationNN(torch.nn.Module):
+    def __init__(self, in_dim, perturbation_shape, batch_size=1):
+        super(PerturbationNN, self).__init__()
+        self.batch_size = batch_size
+        self.linear1 = torch.nn.Linear(in_dim, 2500)
+        self.linear2 = torch.nn.Linear(2500, 2500)
+        self.perturbation_layer = torch.nn.Linear(2500, perturbation_shape)
+        #self.parameter_layer = torch.nn.Linear(2500, affinet_shape)
+        self.angle = torch.nn.Linear(2500, 1)
+        self.translate = torch.nn.Linear(2500, 2)
+        self.scale = torch.nn.Linear(2500, 1)
+        self.shear = torch.nn.Linear(2500, 1)
+
+        self.activation = torch.nn.ReLU()
+
+
+    def forward(self, x):
+        img_shape = x.shape
+        x = x.view(self.batch_size, -1)
+        x = self.activation(self.linear1(x))
+        x = self.activation(self.linear2(x))
+        perturbation = torch.nn.functional.softmin(self.perturbation_layer(x).view(img_shape)) *255.
+        angle = torch.nn.functional.tanh(self.angle(x)) * 180.
+        translate = self.translate(x)
+        scale = torch.clamp(self.scale(x), 0.05, 0.5)
+        shear = torch.nn.functional.tanh(self.shear(x)) * 180.
+
+
+        return perturbation, angle, translate, scale, shear
+
 
 
 class PerturbationModule(torch.nn.Module):
@@ -150,11 +205,11 @@ class PerturbationModule(torch.nn.Module):
         self.perturbation =  torch.nn.Parameter((torch.ones(perturbation_shape, device=self.device) * 255. ).requires_grad_(True))    # initialize perturbation
         
         #angle, translate (List[int]), scale, shear
-        self.affine_parameters = torch.nn.Parameter(torch.tensor([0., 0.1, 0.3, 0.1, 180.], requires_grad=True, device=device))
+        self.affine_parameters = torch.nn.Parameter(torch.tensor([0., 0.1, 0.3, 0.15, 180.], requires_grad=True, device=device))
 
     def forward(self, x):
         bit_mask = self.get_mask(self.perturbation, self.affine_parameters)
-        x *= bit_mask
+        x *= bit_mask.to(self.device)
         patch = affine(self.perturbation, angle=float(self.affine_parameters[0]), 
                            translate=[int(self.affine_parameters[1]), int(self.affine_parameters[2])], 
                            scale=float(self.affine_parameters[3]), 
@@ -165,22 +220,25 @@ class PerturbationModule(torch.nn.Module):
 
         return adv_img
 
-    def get_mask(self, perturbation, parameters):
-        mask = affine(perturbation.detach().cpu(), angle=float(parameters[0]), 
-                            translate=[int(parameters[1]), int(parameters[2])], 
-                            scale=float(parameters[3]), 
-                            shear=float(parameters[4]),
-                            fill=-255.
-                            )
+def get_mask(perturbation, parameters):
+    #print(perturbation.shape)
+    #print(parameters)
+    mask = affine(perturbation.detach().cpu(), angle=float(parameters[0]), 
+                        translate=[int(parameters[1]), int(parameters[2])], 
+                        scale=float(parameters[3]), 
+                        shear=float(parameters[4]),
+                        fill=-255.
+                        )
 
-        for row, column in enumerate(mask[0][0]):
-            for c_idx, value in enumerate(column):
-                if value != -255.:
-                    mask[0][0][row][c_idx] = 0.
-                else:
-                    mask[0][0][row][c_idx] = 1.
-        
-        return mask
+
+    for row, column in enumerate(mask[0][0]):
+        for c_idx, value in enumerate(column):
+            if value != -255.:
+                mask[0][0][row][c_idx] = 0.
+            else:
+                mask[0][0][row][c_idx] = 1.
+    
+    return mask
 
 
 if __name__=="__main__":
@@ -198,7 +256,7 @@ if __name__=="__main__":
     #attack_momentum(model, dataset, device)
  
     perturbation_shape = dataset.dataset.data[0].shape
-
+    print(perturbation_shape)
     #print(dataset.dataset)
     #perturbation = ucs(model, dataset, perturbation_shape, device, epochs=1000000, batch_size=32, lr=1e-4)
     #perturbation = attack_momentum(model, dataset, device)
@@ -211,7 +269,7 @@ if __name__=="__main__":
     #         image = img
     #         break
     image = dataset.dataset.data[70].unsqueeze(0).to(device)
-    perturbation = ics(model, image, device, 1000000, lr=3e-2)
+    perturbation = ics(model, image, device, 1000000, lr=1e-7)
 
     perturbation = perturbation.detach().cpu().numpy()
     np.save('perturbation_x_3_w_parameters', perturbation)
