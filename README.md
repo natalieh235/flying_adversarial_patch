@@ -42,3 +42,30 @@ $ python -m ipykernel install --user --name=kernel_name
 * Download release from https://github.com/GreenWaves-Technologies/gap_sdk/releases/tag/release-v3.9.1
 *  -->
 
+## Usage
+To perform an attack, you'll currently need to work with `adversarial_frontnet/attacks.py`.\
+Please adjust the code in the main routine for your current use-case.
+### Example for the creation of a single patch for a single image
+(1) Choose an image from the dataset, here we chose image 70:
+```python
+image = dataset.dataset.data[70].unsqueeze(0).to(device)
+```
+(2) Calculate a patch, that shifts the prediction of the x position to 3., on 10,000 epochs and a learning rate of 1e-4: 
+```python
+patch = single_image_attack(model, image, 3., device, 10000, lr=1e-4)
+```
+(3) Specify a path for saving the raw data of the patch with numpy (without the .npy file ending)
+```python
+np.save('path/to/file', patch)
+```
+### Example for creating multiple patches for multiple images
+(1) You don't need to specify an image to attack. Simply hand over the whole dataset to the function:
+```python
+patches = multi_image_attack(model=model, train_data=dataset, target_value=3., device=device)
+```
+(2) Specify a path for saving the raw data of the patches with numpy (without the .npy file ending)
+```python
+np.save('path/to/file', patchs)
+```
+Important! This method currently does not produce a reasonable, universal attack!
+

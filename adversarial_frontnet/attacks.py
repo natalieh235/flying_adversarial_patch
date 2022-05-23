@@ -5,7 +5,7 @@ from tqdm import tqdm, trange
 from torchvision import transforms
 from torchvision.transforms.functional import affine
 
-def multi_image_attack(model, train_data, delta_shape, target_value, device, batch_size = 32, epochs=400, lr=1e-3, epsilon=5e-2):
+def multi_image_attack(model, train_data, target_value, device, batch_size = 32, epochs=400, lr=1e-3, epsilon=5e-2):
     for param in model.parameters():                   # freeze Frontnet completely
         param.requires_grad = False 
     
@@ -35,8 +35,9 @@ def multi_image_attack(model, train_data, delta_shape, target_value, device, bat
                 images = images.to(device)
 
 
-                perturbations, angle, scale, shear = adv_attack(images)         # predict a new perturbation and parameters for affine transformation
-                                                                               # TODO: calculate single perturbation for whole batch instead of batch_size patches
+                # TODO: calculate single perturbation for whole batch instead of batch_size patches
+                # the current code does not produce a reasonable attack!
+                perturbations, angle, scale, shear = adv_attack(images)        # predict a new perturbation and parameters for affine transformation
                                                                                # perturbation in range (0., 1.)
                                                                                # angle in range (-180°, 180°)
                                                                                # scale in range (0., 0.7)
@@ -82,13 +83,13 @@ def multi_image_attack(model, train_data, delta_shape, target_value, device, bat
     return perturbation
 
 
-def single_image_attack(model, image, device, iterations, lr=1e-4):
+def single_image_attack(model, image, target_value, device, iterations, lr=1e-4):
     for param in model.parameters():                                    # freeze Frontnet completely
         param.requires_grad = False 
 
     delta_shape = image.shape
 
-    target_x = torch.ones((1, 1)).to(device) * 3.
+    target_x = torch.ones((1, 1)).to(device) * target_value
 
     #noise_jitter = transforms.Compose([
     #                transforms.ColorJitter(),
@@ -221,6 +222,7 @@ class PerturbationModule(torch.nn.Module):
 def get_mask(perturbation, parameters):
     #print(perturbation.shape)
     #print(parameters)
+    # TODO: refactor for more efficient calculation
     mask = affine(perturbation.detach().cpu(), angle=float(parameters[0]), 
                         translate=[int(parameters[1]), int(parameters[2])], 
                         scale=float(parameters[3]), 
@@ -251,16 +253,11 @@ if __name__=="__main__":
     model.eval()
     dataset = load_dataset(path=dataset_path, batch_size=32, shuffle=True, drop_last=True, num_workers=0)
 
-    #attack_momentum(model, dataset, device)
- 
-    perturbation_shape = dataset.dataset.data[0].shape
-    print(perturbation_shape)
-
     #image = dataset.dataset.data[70].unsqueeze(0).to(device)
-    #perturbation = single_image_attack(model, image, device, 1000000, lr=1e-4)
+    #patch = single_image_attack(model, image, 3., device, 1000000, lr=1e-4)
 
-    perturbation = multi_image_attack(model=model, train_data=dataset, delta_shape=0, 
+    patches = multi_image_attack(model=model, train_data=dataset,
                                       target_value=3., device=device)
 
-    perturbation = perturbation.detach().cpu().numpy()
-    np.save('perturbation_x_3_w_parameters', perturbation)
+    patches = patches.detach().cpu().numpy()
+    np.save('patches', patches)
