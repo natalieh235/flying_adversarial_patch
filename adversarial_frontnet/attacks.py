@@ -5,22 +5,25 @@ from tqdm import tqdm, trange
 from torchvision import transforms
 from torchvision.transforms.functional import affine
 
-def ucs(model, train_data, delta_shape, target_value, device, batch_size = 32, epochs=400, lr=1e-3, epsilon=5e-2):
-    """
-    Universal, class specific attack
-    """
-    #target_x = target_y = target_z = target_phi = torch.zeros((batch_size,1), device=device)
-    #target_z = torch.ones((batch_size,1), device=device) * -5
-    target_x = torch.ones((batch_size, 1)).to(device) * target_value
+def multi_image_attack(model, train_data, delta_shape, target_value, device, batch_size = 32, epochs=400, lr=1e-3, epsilon=5e-2):
+    for param in model.parameters():                   # freeze Frontnet completely
+        param.requires_grad = False 
     
-    delta = torch.zeros(delta_shape, requires_grad=True, device=device)                       # initialize perturbation
-    affine_transformer = transforms.RandomAffine(degrees=(-70, 70), translate=(0.1, 0.3), scale=(0.1, 0.6))
-    #delta = torch.randint(low=-1000, high=1000, size=delta_shape, device=device) / 1000.
-    #delta.requires_grad_(True)
+    target_x = torch.ones((batch_size, 1)).to(device) * target_value     # define target pose
 
-    #criterion = torch.nn.L1Loss()
-    #criterion = torch.nn.MSELoss()
-    opt = torch.optim.Adam([delta], lr=lr) # parameter für affine transformation mit trainieren                                                     # and optimizer
+    in_dim = train_data.dataset.data[0].view(-1).shape[0]  # get the shape of one image from the dataset
+    perturbation_shape = in_dim                       # this will be the size of the first layer of the NN calculating the attack
+
+    adv_attack = PerturbationNN(in_dim, perturbation_shape).to(device)
+    #adv_attack = PerturbationModule(delta_shape, device)
+
+    opt = torch.optim.Adam(adv_attack.parameters())
+
+    #noise_jitter = transforms.Compose([
+    #                transforms.ColorJitter(),
+    #                transforms.GaussianBlur(kernel_size=(5,9))
+    #                ])
+
     losses = []
 
     try:
@@ -28,67 +31,59 @@ def ucs(model, train_data, delta_shape, target_value, device, batch_size = 32, e
         for i in t:
             epoch_loss = []
             for _, batch in enumerate(train_data):
-                images, gt_position = batch 
+                images, gt_position = batch
                 images = images.to(device)
-                #adv_example = images + delta                                                
-                # pred_x, pred_y, pred_z, pred_phi = model(adv_example) 
 
-                #transformed_batch = [affine_transfomer(delta) for _ in range(batch_size)]
-                #
-                #adv_batch = images.clone()
-                #for i, image in enumerate(images):
-                #    transformed_delta = affine_transformer(delta)
-                #    adv_batch[i] = torch.add(image, transformed_delta)
 
-                patch = affine_transformer(delta)
+                perturbations, angle, scale, shear = adv_attack(images)         # predict a new perturbation and parameters for affine transformation
+                                                                               # TODO: calculate single perturbation for whole batch instead of batch_size patches
+                                                                               # perturbation in range (0., 1.)
+                                                                               # angle in range (-180°, 180°)
+                                                                               # scale in range (0., 0.7)
+                                                                               # shear in range (-180°, 180°)
 
-                adv_batch = torch.add(images, patch)#delta)
-                #adv_batch = torch.clamp(adv_batch, 0., 1.)                  
+                patches = affine(perturbations, angle=float(angle[0]),         # apply affine transformation to the patch
+                           translate=[0, 0], 
+                           scale=float(scale[0]), 
+                           shear=float(shear[0])
+                           )
+
+                parameters = [angle[0].detach().item(), 0,                         # store the optimized parameters in handy list
+                          0, scale[0].detach().item(), 
+                          shear[0].detach().item()]
+            
+                bit_mask = get_mask(perturbations, parameters).to(device)           # get the bit mask of the patch after affine transformation
+
+                adv_images = ((images * bit_mask) + (patches*255.)) / 255.          # replace the pixels of the original image by the patch
+
+                pred_x, pred_y, pred_z, pred_phi = model(adv_images)             # predict pose in adversarial image
+
+                loss_x = torch.dist(pred_x, target_x, p=2)          # l2 distance between predicted and target pose
                 
-                # use tanh or sigmoid instead
+                loss = loss_x                       # other terms will later be added to the loss
+                #loss_y = torch.dist(pred_y, target_y, p=2)
+                #loss_z = torch.dist(pred_z, gt_z, p=2)
+                #loss_phi = torch.dist(pred_phi, gt_phi, p=2)
 
+                epoch_loss.append(loss.item())      # bookkeeping for later debugging 
+                losses.append(loss.item())  
 
-                pred_x, _, _, _ = model(adv_batch)             # Frontnet returns a list of tensors
-                #pred = torch.stack(pred)                      # we therefore concatenate the tensors in the list
-                #pred = pred.view(gt_position.shape)
-                #print(pred_x.shape)
+                t.set_postfix({"Avg. loss": np.mean(losses), "Avg. epoch loss": np.mean(epoch_loss)}, refresh=True)    # configure output of tqdm for monitoring         
+                opt.zero_grad()                      # delete all accumulated gradients
+                loss.backward()                      # calculate the gradient of the loss w.r.t the patch
+                opt.step()                           # clip the pixel values of the adversarial image to stay in 0. - 255. 
 
-                #gt_x, _, _, _ = model(images)
-                #print(gt_x.shape)
-                #print(gt_x[0])
-                #gt_position = model(images)
-                #gt_position = torch.stack(gt_position).view(pred.shape)
-                #pred = pred.T                               # and transpose the new tensor to match the shape of the stored position
-
-
-
-                #loss = loss_x + loss_y + loss_z + loss_phi
-                #loss = loss_z
-                #loss = -criterion(pred, gt_position)
-                loss_positon = torch.dist(pred_x, target_x, p=2)
-                
-                loss = loss_positon 
-                
-                epoch_loss.append(loss.item())
-                losses.append(loss.item())
-
-                t.set_postfix({"Avg. loss": np.mean(losses), "Avg. epoch loss": np.mean(epoch_loss)}, refresh=True)            
-                opt.zero_grad() 
-                loss.backward()                                                                         # calculate the gradient w.r.t. the loss
-                opt.step()                                                                              # update the perturbation
-
-                adv_batch = torch.clamp(adv_batch, 0., 255.)   
-                #delta.data.clamp_(-1., 1.)
-                #delta = torch.clamp(delta, -1., 1.)                                                    # clip the pixel values to stay in certain range
+                adv_images = torch.clamp(adv_images, 0., 255.)    # clip the pixel values of the adversarial image to stay in 0. - 255. 
+                                                 
     except KeyboardInterrupt:
-        print("Delta in range: ({},{})".format(torch.min(delta.data).item(), torch.max(delta.data).item()))
-        return delta             
-    print("Delta in range: ({},{})".format(torch.min(delta.data).item(), torch.max(delta.data).item()))
-    return delta
+        print("Delta in range: ({},{})".format(torch.min(perturbation.data).item(), torch.max(perturbation.data).item()))
+        return perturbation             
+    print("Delta in range: ({},{})".format(torch.min(perturbation.data).item(), torch.max(perturbation.data).item()))
+    return perturbation
 
 
-def ics(model, image, device, iterations, lr=1e-4):
-    for param in model.parameters():
+def single_image_attack(model, image, device, iterations, lr=1e-4):
+    for param in model.parameters():                                    # freeze Frontnet completely
         param.requires_grad = False 
 
     delta_shape = image.shape
@@ -102,56 +97,58 @@ def ics(model, image, device, iterations, lr=1e-4):
 
     in_dim = image.view(-1).shape[0]
     perturbation_shape = in_dim
-    parameters_shape = 5
 
-    adv_attack = PerturbationNN(in_dim, perturbation_shape).to(device)#PerturbationModule(delta_shape, device)
+    adv_attack = PerturbationNN(in_dim, perturbation_shape, batch_size=1).to(device)#PerturbationModule(delta_shape, device)
     opt = torch.optim.Adam(adv_attack.parameters())
 
     try:
         t = trange(iterations)
         for i in t:
     
-            perturbation, angle, translate, scale, shear = adv_attack(image)
+            perturbation, angle, scale, shear = adv_attack(image)              # predict a new perturbation and parameters for affine transformation
+                                                                               # perturbation in range (0., 1.)
+                                                                               # angle in range (-180°, 180°)
+                                                                               # scale in range (0., 0.7)
+                                                                               # shear in range (-180°, 180°)
             #print(angle, translate, scale, shear)
-            patch = affine(perturbation, angle=float(angle[0]), 
-                           translate=[int(0), int(0)], 
+            patch = affine(perturbation, angle=float(angle[0]),                # apply affine transformation to the patch
+                           translate=[0, 0], 
                            scale=float(scale[0]), 
                            shear=float(shear[0])
                            )
 
-            parameters = [angle[0].detach().item(), 0, 
+            parameters = [angle[0].detach().item(), 0,                         # store the optimized parameters in handy list
                           0, scale[0].detach().item(), 
                           shear[0].detach().item()]
             
-            bit_mask = get_mask(perturbation, parameters).to(device)
+            bit_mask = get_mask(perturbation, parameters).to(device)           # get the bit mask of the patch after affine transformation
 
-            adv_image = ((image*bit_mask) + perturbation) / 255.
+            adv_image = ((image*bit_mask) + (patch*255.)) / 255.                # replace the pixels of the original image by the patch
 
 
             #adv_image = adv_attack(image)
-            pred_x, pred_y, pred_z, pred_phi = model(adv_image)             # Frontnet returns a list of tensors
+            pred_x, pred_y, pred_z, pred_phi = model(adv_image)             # predict pose in adversarial image
             #gt_x, gt_y, gt_z, gt_phi = model(image)
 
 
-            loss_x = torch.dist(pred_x, target_x, p=2)
+            loss_x = torch.dist(pred_x, target_x, p=2)                    # l2 distance between predicted and target pose
             #loss_y = torch.dist(pred_y, target_y, p=2)
             #loss_z = torch.dist(pred_z, gt_z, p=2)
             #loss_phi = torch.dist(pred_phi, gt_phi, p=2)
 
-            loss = loss_x
+            loss = loss_x                                               # other terms will later be added to the loss
 
-            t.set_postfix({"Loss": loss.item()}, refresh=True)
-            if i % 1000 == 0:
+            t.set_postfix({"Loss": loss.item()}, refresh=True)          # configure output of tqdm for monitoring
+            if i % 1000 == 0:                                           # add further debug information after certain time step    
                 print(pred_x)
                 #print(adv_attack.affine_parameters.detach().cpu().numpy())
-                print(angle[0].detach().item(), translate[0][0].detach().item(), 
-                      translate[0][1].detach().item(), scale[0].detach().item(), 
+                print(angle[0].detach().item(), scale[0].detach().item(), 
                       shear[0].detach().item())
-            opt.zero_grad() 
-            loss.backward()                                                                         # calculate the gradient w.r.t. the loss
-            opt.step()    
+            opt.zero_grad()                                            # delete all accumulated gradients
+            loss.backward()                                            # calculate the gradient of the loss w.r.t the patch
+            opt.step()                                                 # update the pixel values of the patch
 
-            adv_image = torch.clamp(adv_image, 0., 255.)  
+            adv_image = torch.clamp(adv_image, 0., 255.)              # clip the pixel values of the adversarial image to stay in 0. - 255. 
 
     except KeyboardInterrupt:
         print("Stop calculating perturbation")
@@ -160,14 +157,13 @@ def ics(model, image, device, iterations, lr=1e-4):
     gt_x, _, _, _ = model(image)
     pred_x, _, _, _ = model(adv_image)         
     print("Prediction: {}, ground-truth: {}".format(pred_x, gt_x))
-    print("Affine transformer parameters: ", angle[0].detach().item(), translate[0][0].detach().item(), 
-                                             translate[0][1].detach().item(), scale[0].detach().item(), 
+    print("Affine transformer parameters: ", angle[0].detach().item(), scale[0].detach().item(), 
                                              shear[0].detach().item())
     return perturbation
 
 
 class PerturbationNN(torch.nn.Module):
-    def __init__(self, in_dim, perturbation_shape, batch_size=1):
+    def __init__(self, in_dim, perturbation_shape, batch_size=32):
         super(PerturbationNN, self).__init__()
         self.batch_size = batch_size
         self.linear1 = torch.nn.Linear(in_dim, 2500)
@@ -175,7 +171,7 @@ class PerturbationNN(torch.nn.Module):
         self.perturbation_layer = torch.nn.Linear(2500, perturbation_shape)
         #self.parameter_layer = torch.nn.Linear(2500, affinet_shape)
         self.angle = torch.nn.Linear(2500, 1)
-        self.translate = torch.nn.Linear(2500, 2)
+        #self.translate = torch.nn.Linear(2500, 2)
         self.scale = torch.nn.Linear(2500, 1)
         self.shear = torch.nn.Linear(2500, 1)
 
@@ -187,14 +183,16 @@ class PerturbationNN(torch.nn.Module):
         x = x.view(self.batch_size, -1)
         x = self.activation(self.linear1(x))
         x = self.activation(self.linear2(x))
-        perturbation = torch.nn.functional.softmin(self.perturbation_layer(x).view(img_shape)) *255.
-        angle = torch.nn.functional.tanh(self.angle(x)) * 180.
-        translate = self.translate(x)
-        scale = torch.clamp(self.scale(x), 0.05, 0.5)
-        shear = torch.nn.functional.tanh(self.shear(x)) * 180.
+        perturbation = self.perturbation_layer(x).view(img_shape)#torch.nn.functional.softmin(self.perturbation_layer(x).view(img_shape))
+        perturbation = (perturbation - torch.min(perturbation)) * 255. / (torch.max(perturbation) - torch.min(perturbation))
+        angle = torch.tanh(self.angle(x)) * 180.
+        #translate = self.translate(x)
+        scale = torch.nn.functional.softmin(self.scale(x))
+        scale = torch.clamp(scale, min=0., max=0.7)
+        shear = torch.tanh(self.shear(x)) * 180.
 
 
-        return perturbation, angle, translate, scale, shear
+        return perturbation, angle, scale, shear
 
 
 
@@ -257,19 +255,12 @@ if __name__=="__main__":
  
     perturbation_shape = dataset.dataset.data[0].shape
     print(perturbation_shape)
-    #print(dataset.dataset)
-    #perturbation = ucs(model, dataset, perturbation_shape, device, epochs=1000000, batch_size=32, lr=1e-4)
-    #perturbation = attack_momentum(model, dataset, device)
 
-    # for i, img in enumerate(dataset.dataset.data):
-    #     img = img.to(device).unsqueeze(0)
-    #     gt_x, _, _, _ = model(img)
-    #     if int(gt_x) == 1:
-    #         print(i, gt_x)
-    #         image = img
-    #         break
-    image = dataset.dataset.data[70].unsqueeze(0).to(device)
-    perturbation = ics(model, image, device, 1000000, lr=1e-7)
+    #image = dataset.dataset.data[70].unsqueeze(0).to(device)
+    #perturbation = single_image_attack(model, image, device, 1000000, lr=1e-4)
+
+    perturbation = multi_image_attack(model=model, train_data=dataset, delta_shape=0, 
+                                      target_value=3., device=device)
 
     perturbation = perturbation.detach().cpu().numpy()
     np.save('perturbation_x_3_w_parameters', perturbation)
