@@ -153,11 +153,11 @@ if __name__ == "__main__":
     init_guess = initial_guess_camera_matrix()
 
     df = read_csv_file(path)
-    points_3d = get_3d_coords(df, ' pred_x', ' pred_y', ' pred_z')
-    points_2d = get_2d_coords(df, ' img_x', ' img_y')
+    points_3d = get_3d_coords(df)
+    points_2d = get_2d_coords(df)
 
     camera_matrix, translation_matrix, dist_coeffs, error = calibrate_camera(points_3d, points_2d, init_guess)
     print(camera_matrix)
     print(translation_matrix)
-    print(translation_matrix)
     print(dist_coeffs)
+    print(error)
