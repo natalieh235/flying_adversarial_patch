@@ -38,7 +38,7 @@ def get_3d_coords(dataframe, column_x='x', column_y='y', column_z='z'):
     Returns:
         a (n, 3)-shaped numpy array including all 3D coordinates from the dataframe
     """
-    return np.array([dataframe[column_x], dataframe[column_y], dataframe[column_z]])
+    return np.array([dataframe[column_x], dataframe[column_y], dataframe[column_z]]).T
 
 def get_2d_coords(dataframe, column_x='img_x', column_y='img_y'):
     """
@@ -51,7 +51,7 @@ def get_2d_coords(dataframe, column_x='img_x', column_y='img_y'):
     Returns:
         a (n, 2)-shaped numpy array including all 3D coordinates from the dataframe
     """
-    return np.array([dataframe[column_x], dataframe[column_y]])
+    return np.array([dataframe[column_x], dataframe[column_y]]).T
 
 
 def calc_focal_lengths_from_fov(fov_x, fov_y, c_x, c_y):
@@ -69,8 +69,8 @@ def calc_focal_lengths_from_fov(fov_x, fov_y, c_x, c_y):
     if fov_y is None:                   # if fov_y is not set, it is assumed it is equal to fov_x
         fov_y = fov_x
 
-    focal_length_x = c_x * np.tan(np.degrees(fov_x / 2.))  
-    focal_length_y = c_y * np.tan(np.degrees(fov_y / 2.))
+    focal_length_x = c_x / np.tan(np.radians(fov_x / 2.))  
+    focal_length_y = c_y / np.tan(np.radians(fov_y / 2.))
 
     return focal_length_x, focal_length_y
 
@@ -102,7 +102,24 @@ def initial_guess_camera_matrix(fov_x=FIELD_OF_VIEW_Y, fov_y=FIELD_OF_VIEW_Y, c_
 
     return matrix
 
-def calibrate_camera(points_3d, points_2d, initial_guess, img_size=[96., 160.]):
+def get_translation_matrix(rvec, tvec):
+    """
+    Receive the full (3,4) rotation and translation matrix from the rotation and translation vector calculated
+    by the camera calibration.
+    Parameters:
+        ----------
+        rvec: a (3,1) numpy array, the calculated rotation vector
+        tvec: a (3,1) numpy array, the calulated translation vector
+    Returns:
+        a (3,4) numpy array, the translation matrix including rotation and translation to image frame       
+    """
+    matrix = np.zeros((3,4))
+    matrix[:3, :3] = Rodrigues(rvec)[0]
+    matrix[:, 3] = tvec.T
+
+    return matrix
+
+def calibrate_camera(points_3d, points_2d, initial_guess, img_size=[96, 160]):
     """
     Wrapper for the cv2 calibrateCamera() function.
     Parameters:
@@ -114,24 +131,33 @@ def calibrate_camera(points_3d, points_2d, initial_guess, img_size=[96., 160.]):
         img_size: tuple, height and width of the images
     Returns:
         camera_matrix: a (3,3) numpy array, the calculated camera intrinsics matrix
-        rvecs: a (3,1) numpy array, the rotation vector
-        tvecs: a (3,1) numpy array, the translation vector
-        -> both vectors are needed for generating the transformation matrix, see function get_transformation_matrix()
+        translation_matrix: a (3,4) numpy array, the translation matrix derived from the rotation and translation vector
         dist_coeffs: a (n,) numpy array, with n distortion coefficients
         error: the error for the calculated matrix, lower is better
     """
-    print(img_size)
+
+    # calibrateCamera expects the array to be of shape (1, n, m)
+    # and as float32
+    points_3d = np.reshape(points_3d, (1, *points_3d.shape)).astype('float32') 
+    points_2d = np.reshape(points_2d, (1, *points_2d.shape)).astype('float32') 
     error, camera_matrix, dist_coeffs, rvecs, tvecs = calibrateCamera(points_3d, points_2d, img_size, initial_guess, None, flags=CALIB_USE_INTRINSIC_GUESS)
 
-    return camera_matrix, rvecs[0], tvecs[0], dist_coeffs[0], error
+    translation_matrix = get_translation_matrix(rvecs[0], tvecs[0])
+
+    return camera_matrix, translation_matrix, dist_coeffs[0], error
+
 
 
 if __name__ == "__main__":
-    path = '~/Documents/Coding/adversarial_frontnet/adversarial_frontnet/camera_intrinsics/ground_truth_pose.csv'
+    path = 'path/to/csv'
     init_guess = initial_guess_camera_matrix()
 
     df = read_csv_file(path)
     points_3d = get_3d_coords(df, ' pred_x', ' pred_y', ' pred_z')
     points_2d = get_2d_coords(df, ' img_x', ' img_y')
 
-    print(calibrate_camera(points_3d, points_2d, init_guess))
+    camera_matrix, translation_matrix, dist_coeffs, error = calibrate_camera(points_3d, points_2d, init_guess)
+    print(camera_matrix)
+    print(translation_matrix)
+    print(translation_matrix)
+    print(dist_coeffs)
