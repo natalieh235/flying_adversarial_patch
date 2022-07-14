@@ -149,15 +149,33 @@ def calibrate_camera(points_3d, points_2d, initial_guess, img_size=[96, 160]):
 
 
 if __name__ == "__main__":
-    path = 'path/to/csv'
+    # --- Example for camera calibration for Frontnet images
+    path = 'ground_truth_pose.csv'
+
+    # calculate the initial guess for the camera intrinsics matrix from given field of view
     init_guess = initial_guess_camera_matrix()
 
+    # read the csv files and get both 3D and 2D points
     df = read_csv_file(path)
     points_3d = get_3d_coords(df)
     points_2d = get_2d_coords(df)
 
+    # calibrate the camera
     camera_matrix, translation_matrix, dist_coeffs, error = calibrate_camera(points_3d, points_2d, init_guess)
     print(camera_matrix)
     print(translation_matrix)
     print(dist_coeffs)
     print(error)
+
+    # refactor data in dictionary for saving
+    dict = {
+        "camera_matrix" : camera_matrix.tolist(),
+        "translation_matrix" : translation_matrix.tolist(),
+        "dist_coeffs" : dist_coeffs.tolist(),
+        "error" : error
+    }
+
+    # save the calibration data in a yaml file
+    import yaml
+    with open('camera_config.yaml', 'w') as f:
+        yaml.dump(dict, f, allow_unicode=True)
