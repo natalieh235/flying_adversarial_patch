@@ -69,3 +69,24 @@ np.save('path/to/file', patchs)
 ```
 Important! This method currently does not produce a reasonable, universal attack!
 
+### Example for placing a single patch at an arbitrary position
+Please follow the main method in `adversarial_frontnet/patch_placement.py` to place a random patch in a single image at an arbitrary position.
+
+Prerequisites: Load or calculate the camera configuration (see [Reproduce camera calibration](#reproduce-camera-calibration))
+
+## Reproduce camera calibration
+The camera calibration was performed on the `160x96StrangersTestset` dataset provided by the pulp-frontnet authors. If you followed the steps in [Download the datasets](#download-the-datasets), you can find the dataset here: `pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle`.
+
+We saved all the 3D coordinates and the corresponding 2D coordinates of the humans in the images in a csv file. You can find it here: `adversarial_frontnet/camera_calibration/ground_truth_pose.cs`
+
+The 3D coordinates are relative to the camera - the UAV with an attached [AI deck](https://www.bitcraze.io/documentation/tutorials/getting-started-with-aideck/). These values are stored as ground-truth data in the dataset.
+
+The 2D coordinates of the human in the image are manually annotated and therefore prone to errors.
+
+We investigated two ways to ways to calibrate the camera: 
+1) calculating a projection matrix with *Direct Linear Transformation* 
+2) utilizing OpenCV's `calibrateCamera()` and `projectPoints()` functions
+
+We have calculated the l2 distance between the manually set points stored in the csv file and the calculated pixel coordinates utilizing both methods. The mean l2 distance of the calculated pixel coordinates utilizing OpenCV was smaller. We therefore adapted the OpenCV functions for our code.
+
+You can follow the main method in `adversarial_frontnet/camera_calibration/camera_calibration.py` to calculate the camera intrinsics, rotation and translation matrix and the distortion coefficients needed for projecting pixels. Additionally, you can load these values from the yaml file, provided in the same folder.
