@@ -3,7 +3,8 @@ import torch
 #from rowan import to_matrix
 
 def to_rotation_matrix(q, require_unit=True):
-    # adapt rowan to_matrix for torch
+    # copy of rowan's to_matrix() function and adapting it for torch
+    # source: https://github.com/glotzerlab/rowan/blob/1b64ac7399e86459ee95e8499b11919b83a30305/rowan/functions.py#L952
     s = torch.linalg.norm(q)
     if torch.any(s == 0.0):
         raise ZeroDivisionError("At least one element of q has approximately zero norm")
@@ -146,9 +147,9 @@ def project_coords_to_image(patch_size, camera_config, T_attacker_in_camera, T_p
     # at last, transform into image pixel coordinates
     u, v, z = camera_matrix @ coords_dist.mT
     # u and v need to be devided by z
-    # simoultaneously round both arrays and store the values as int (floats are not needed here)
-    img_x = torch.round(u/z, decimals=0).to(torch.int)
-    img_y = torch.round(v/z, decimals=0).to(torch.int)
+    # simoultaneously round both arrays
+    img_x = torch.round(u/z, decimals=0)
+    img_y = torch.round(v/z, decimals=0)
 
     # reshaping for easier use with following for loops
     img_x = torch.reshape(img_x, (patch_size[0], patch_size[1]))
@@ -201,7 +202,7 @@ def get_transformed_patch(image_coords, patch, image_size):
             # this means we only replace pixels starting from the upper left corner (0,0)
             # until the lower right corner (height, width) of the original image
             # any pixels outside of the original image are ignored
-            if img_x[x][y] >= 0. and img_x[x][y] >= 0.:
+            if img_x[x][y] >= 0. and img_y[x][y] >= 0.:
                 if img_x[x][y] < image_size[0] and img_y[x][y] < image_size[1]:
                     transformed_patch[img_x[x][y]][img_y[x][y]] = patch[x][y]
 
