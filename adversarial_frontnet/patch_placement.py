@@ -1,6 +1,31 @@
 import numpy as np
 import torch
-from rowan import to_matrix
+#from rowan import to_matrix
+
+def to_rotation_matrix(q, require_unit=True):
+    # adapt rowan to_matrix for torch
+    s = torch.linalg.norm(q)
+    if torch.any(s == 0.0):
+        raise ZeroDivisionError("At least one element of q has approximately zero norm")
+    elif require_unit and not torch.allclose(s, torch.tensor(1.0)):
+        raise ValueError(
+            "Not all quaternions in q are unit quaternions. \
+If this was intentional, please set require_unit to False when \
+calling this function."
+        )
+
+    m = torch.empty(q.shape[:-1] + (3, 3))
+    s = torch.pow(s, -1.0)  # For consistency with Wikipedia notation
+    m[..., 0, 0] = 1.0 - 2 * s * (q[..., 2] ** 2 + q[..., 3] ** 2)
+    m[..., 0, 1] = 2 * (q[..., 1] * q[..., 2] - q[..., 3] * q[..., 0])
+    m[..., 0, 2] = 2 * (q[..., 1] * q[..., 3] + q[..., 2] * q[..., 0])
+    m[..., 1, 0] = 2 * (q[..., 1] * q[..., 2] + q[..., 3] * q[..., 0])
+    m[..., 1, 1] = 1.0 - 2 * (q[..., 1] ** 2 + q[..., 3] ** 2)
+    m[..., 1, 2] = 2 * (q[..., 2] * q[..., 3] - q[..., 1] * q[..., 0])
+    m[..., 2, 0] = 2 * (q[..., 1] * q[..., 3] - q[..., 2] * q[..., 0])
+    m[..., 2, 1] = 2 * (q[..., 2] * q[..., 3] + q[..., 1] * q[..., 0])
+    m[..., 2, 2] = 1.0 - 2 * (q[..., 1] ** 2 + q[..., 2] ** 2)
+    return m
 
 
 def calc_T_in_attaker_frame(patch_size, scale_factor=0.01, xyz_translations=[0., 0., 0.]):
@@ -36,7 +61,7 @@ def calc_T_in_attaker_frame(patch_size, scale_factor=0.01, xyz_translations=[0.,
     # for now, no rotation is performed
 
 
-    T_patch_in_attacker = np.array([[scale_factor*1., 0., 0., t_x],
+    T_patch_in_attacker = torch.tensor([[scale_factor*1., 0., 0., t_x],
                                     [0., scale_factor*1., 0., t_y],
                                     [0., 0., scale_factor*1., t_z],
                                     [0., 0., 0., 1.]])
@@ -55,12 +80,12 @@ def calc_T_attacker_in_camera(attacker_xyz, attacker_quaternions):
     Returns:
         a (4,4) numpy array, the transformation matrix
     """
-    T_attacker_in_camera = np.zeros((4,4))
+    T_attacker_in_camera = torch.zeros((4,4))
     # calculate rotation matrix from quaternions with rowan's to_matrix
-    rotation = to_matrix(attacker_quaternions)
+    rotation = to_rotation_matrix(attacker_quaternions)
     # fill empty matrix with values for rotation and translation 
     T_attacker_in_camera[:3, :3] = rotation
-    T_attacker_in_camera[:, 3][:3] = attacker_xyz.T
+    T_attacker_in_camera[:, 3][:3] = attacker_xyz
     T_attacker_in_camera[3, 3] = 1.
     
     return T_attacker_in_camera
@@ -81,15 +106,21 @@ def project_coords_to_image(patch_size, camera_config, T_attacker_in_camera, T_p
     """
     # get a (4, n) matrix with all pixel coordinates of the patch
     indy, indx = np.indices((patch_size[0], patch_size[1]), dtype=np.float32)
-    lin_homg_ind = np.array([indx.ravel(), indy.ravel(), np.zeros_like(indx).ravel(), np.ones_like(indx).ravel()])
-   
+    # lin_homg_ind = np.array([indx.ravel(), indy.ravel(), np.zeros_like(indx).ravel(), np.ones_like(indx).ravel()])
+    # print(lin_homg_ind.shape)
+    
+    indy = torch.tensor(indy).flatten()
+    indx = torch.tensor(indx).flatten()
+    lin_homg_ind = torch.stack((indy, indx, torch.zeros_like(indx), torch.ones_like(indx)))
+    #print(lin_homg_ind.shape)
+
     # transform coordinates to camera frame
     coords_in_camera = T_attacker_in_camera @ T_patch_in_attacker @ lin_homg_ind
 
     # convert camera config to numpy arrays
-    camera_matrix = np.array(camera_config['camera_matrix'])
-    translation_marix = np.array(camera_config['translation_matrix'])
-    dist_coeffs = np.array(camera_config['dist_coeffs'])
+    camera_matrix = torch.tensor(camera_config['camera_matrix'])
+    translation_marix = torch.tensor(camera_config['translation_matrix'])
+    dist_coeffs = torch.tensor(camera_config['dist_coeffs'])
 
     # store all distortion coeffecients in seperate variables
     k_1, k_2, p_1, p_2, k_3 = dist_coeffs
@@ -98,12 +129,12 @@ def project_coords_to_image(patch_size, camera_config, T_attacker_in_camera, T_p
     coords_in_image = translation_marix @ coords_in_camera
     
     # second: consider distortion
-    coords_dist = np.ones((coords_in_image.T.shape))
-    for i, coords in enumerate(coords_in_image.T):
+    coords_dist = torch.ones_like((coords_in_image.mT))
+    for i, coords in enumerate(coords_in_image.mT):
         x_ = coords[0] / coords[2]
         y_ = coords[1] / coords[2]
 
-        r = np.sqrt(x_**2 + y_**2)
+        r = torch.sqrt(x_**2 + y_**2)
 
         x_d = x_ * (1+k_1*r**2+k_2*r**4+k_3*r**6) + 2*p_1*x_*y_+p_2
         y_d = y_ * (1+k_1*r**2+k_2*r**4+k_3*r**6) + p_1*(r**2+2*y_**2)+2*p_2*x_*y_
@@ -113,15 +144,15 @@ def project_coords_to_image(patch_size, camera_config, T_attacker_in_camera, T_p
 
 
     # at last, transform into image pixel coordinates
-    u, v, z = camera_matrix @ coords_dist.T
+    u, v, z = camera_matrix @ coords_dist.mT
     # u and v need to be devided by z
     # simoultaneously round both arrays and store the values as int (floats are not needed here)
-    img_x = np.round(u/z, decimals=0).astype(int)
-    img_y = np.round(v/z, decimals=0).astype(int)
+    img_x = torch.round(u/z, decimals=0).to(torch.int)
+    img_y = torch.round(v/z, decimals=0).to(torch.int)
 
     # reshaping for easier use with following for loops
-    img_x = img_x.reshape(patch_size[0], patch_size[1])
-    img_y = img_y.reshape(patch_size[0], patch_size[1])
+    img_x = torch.reshape(img_x, (patch_size[0], patch_size[1]))
+    img_y = torch.reshape(img_y, (patch_size[0], patch_size[1]))
     return img_x, img_y
     
 def get_bit_mask(image_coords, image_size):
@@ -134,7 +165,7 @@ def get_bit_mask(image_coords, image_size):
     Returns:
         a (height, width) numpy array, the bit mask for placing the patch
     """
-    bit_mask = np.ones((image_size[0], image_size[1]))
+    bit_mask = torch.ones((image_size[0], image_size[1]))
     img_x, img_y = image_coords
 
     for x in range(img_x.shape[0]):
@@ -162,7 +193,7 @@ def get_transformed_patch(image_coords, patch, image_size):
     Returns:
         a (height, width) numpy array, the placed patch in an otherwise black image
     """
-    transformed_patch = np.zeros((image_size[0], image_size[1]))
+    transformed_patch = torch.zeros((image_size[0], image_size[1]))
     img_x, img_y = image_coords
     for x in range(img_x.shape[0]):
         for y in range(img_y.shape[1]):
@@ -232,26 +263,26 @@ if __name__=="__main__":
         config = yaml.safe_load(file)
 
     # and convert to numpy arrays
-    camera_matrix = np.array(config['camera_matrix'])
-    translation_marix = np.array(config['translation_matrix'])
-    dist_coeffs = np.array(config['dist_coeffs'])
+    # camera_matrix = torch.tensor(config['camera_matrix'])
+    # translation_marix = torch.tensor(config['translation_matrix'])
+    # dist_coeffs = torch.tensor(config['dist_coeffs'])
 
     # generate a random patch
     # first, generate random values between 0 and 1, 
     # then multiply by 255. to receive values between 0. and 255.
-    patch = np.random.rand(100, 100) * 255.
+    patch = (torch.rand(100, 100) * 255.).requires_grad_()
 
 
     # set an arbitrary pose for testing
     # pose includes x,y,z and quaternions in order qx, qy, qz, qw
     # x,y,z will be the center of the patch in camera frame
     # quaternions hold rotation information from attacker (holding the patch) to camera frame
-    pose = np.array([2.7143893241882324,1.6456797122955322,0.4578791558742523, 
-                     0.0114797880217894, 0.0744068142306854, -0.1520472288581698, 0.985501639095322])
+    pose = torch.tensor([2.7143893241882324,1.6456797122955322,0.4578791558742523, 
+                         0.0114797880217894, 0.0744068142306854, -0.1520472288581698, 0.985501639095322]).requires_grad_()
 
     # place the patch
     new_image = place_patch(image, patch, pose, config)
     # plot the final image
     import matplotlib.pyplot as plt
-    plt.imshow(new_image)
+    plt.imshow(new_image.detach().numpy())
     plt.show()
