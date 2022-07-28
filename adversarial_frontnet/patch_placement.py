@@ -1,6 +1,10 @@
 import numpy as np
 import torch
 #from rowan import to_matrix
+from torch.nn.functional import grid_sample
+
+
+import matplotlib.pyplot as plt
 
 def to_rotation_matrix(q, require_unit=True):
     # copy of rowan's to_matrix() function and adapting it for torch
@@ -91,7 +95,7 @@ def calc_T_attacker_in_camera(attacker_xyz, attacker_quaternions):
     
     return T_attacker_in_camera
 
-def project_coords_to_image(patch_size, camera_config, T_attacker_in_camera, T_patch_in_attacker):
+def project_coords_to_image(patch_size, image_size, camera_config, T_attacker_in_camera, T_patch_in_attacker):
     """
     Function for calculating the image 2D coordinates of the whole patch.
     Has the same functionality as cv2.projectPoints().
@@ -106,19 +110,39 @@ def project_coords_to_image(patch_size, camera_config, T_attacker_in_camera, T_p
         img_y: a (patch_height, patch_width) numpy array, including all projected y coordinates of the patch
     """
     # get a (4, n) matrix with all pixel coordinates of the patch
-    indy, indx = np.indices((patch_size[0], patch_size[1]), dtype=np.float32)
-    # lin_homg_ind = np.array([indx.ravel(), indy.ravel(), np.zeros_like(indx).ravel(), np.ones_like(indx).ravel()])
-    # print(lin_homg_ind.shape)
+    indy, indx = np.indices((patch_size[2], patch_size[3]), dtype=np.float32)
+    # # lin_homg_ind = np.array([indx.ravel(), indy.ravel(), np.zeros_like(indx).ravel(), np.ones_like(indx).ravel()])
+    # # print(lin_homg_ind.shape)
     
     indy = torch.tensor(indy).flatten()
     indx = torch.tensor(indx).flatten()
     lin_homg_ind = torch.stack((indy, indx, torch.zeros_like(indx), torch.ones_like(indx)))
-    #print(lin_homg_ind.shape)
+    # print(lin_homg_ind.shape)
+
+    oh, ow = image_size[2:]
+    h, w = patch_size[2:]
+    d = 0.5
+    base_grid = torch.empty(4, oh, ow)
+    #print(base_grid.shape)
+    x_grid = torch.linspace(-ow * 0.5 + d, ow * 0.5 + d - 1, steps=ow)
+    base_grid[0].copy_(x_grid)
+    y_grid = torch.linspace(-oh * 0.5 + d, oh * 0.5 + d - 1, steps=oh).unsqueeze_(-1)
+    base_grid[1].copy_(y_grid)
+    base_grid[2].fill_(0)
+    base_grid[3].fill_(1)
+
+    base_grid = base_grid.view(4, -1)
+
+    #transfprmation_matrix = (T_attacker_in_camera @ T_patch_in_attacker) / torch.tensor([0.5 * w, 0.5 * h])
 
     # transform coordinates to camera frame
     coords_in_camera = T_attacker_in_camera @ T_patch_in_attacker @ lin_homg_ind
+    #coords_in_camera = T_attacker_in_camera @ T_patch_in_attacker @ base_grid
 
-    # convert camera config to numpy arrays
+    #print(coords_in_camera_ori[:10])
+    #print(coords_in_camera_grid[:10])
+
+    # convert camera config to numpy arraysase_grid#
     camera_matrix = torch.tensor(camera_config['camera_matrix'])
     translation_marix = torch.tensor(camera_config['translation_matrix'])
     dist_coeffs = torch.tensor(camera_config['dist_coeffs'])
@@ -151,12 +175,19 @@ def project_coords_to_image(patch_size, camera_config, T_attacker_in_camera, T_p
     img_x = torch.round(u/z, decimals=0)
     img_y = torch.round(v/z, decimals=0)
 
-    # reshaping for easier use with following for loops
-    img_x = torch.reshape(img_x, (patch_size[0], patch_size[1]))
-    img_y = torch.reshape(img_y, (patch_size[0], patch_size[1]))
-    return img_x, img_y
+    # reshaping and stacking to get valid grid
+    #img_x = torch.reshape(img_x, (h, w))
+    #img_y = torch.reshape(img_y, (h, w))
+    grid = torch.stack([img_x, img_y]).mT.reshape((1, *img_x.shape, 2))
+
+    print("--end of projection--")
+    print(grid.shape)
+    print(grid[0])
+    print()
+    #print(grid[:])
+    return grid
     
-def get_bit_mask(image_coords, image_size):
+def get_bit_mask(patch_size, image_size, grid):
     """"
     Calculate a bit mask for replacing the pixels of the transformed patch in the original image.
     Parameters:
@@ -166,23 +197,58 @@ def get_bit_mask(image_coords, image_size):
     Returns:
         a (height, width) numpy array, the bit mask for placing the patch
     """
-    bit_mask = torch.ones((image_size[0], image_size[1]))
-    img_x, img_y = image_coords
+    bit_mask = torch.ones((image_size[2:]))
 
-    for x in range(img_x.shape[0]):
-        for y in range(img_y.shape[0]):
-            # only replace pixels that are actually visible in the image
-            # this means we only replace pixels starting from the upper left corner (0,0)
-            # until the lower right corner (height, width) of the original image
-            # any pixels outside of the original image are ignored
-            if img_x[x][y] >= 0. and img_y[x][y] >= 0.: 
-                if img_x[x][y] < image_size[0] and img_y[x][y] < image_size[1]:
-                    bit_mask[img_x[x][y]][img_y[x][y]] = 0.
+    #ori_x = torch.linspace(0, patch_size[2])
+    #ori_y = torch.linspace(0, patch_size[3])
 
+
+    # for x in range(image_size[2]):
+    #     for y in range(image_size[3]):
+    #         if x,y in grid:
+    #             bit_mask[x,y] = patch[ori_x[x], ori_y[y]]
+
+    # for k in range(patch_size[2]):
+    #     for j in range(patch_size[3]):
+    #         print(max(0, 1-torch.abs(grid[0]-j)))
+    #         print(max(0, 1-torch.abs(grid[1]-k)))
     
+
+
+    # for x in range(image_size[2]):
+    #     for y in range(image_size[3]):
+    #         bit_mask[x,y] = 
+    # for x in range(image_size[2]):
+    #     for y in range(image_size[3]):
+
+
+    #img_x, img_y = grid.reshape(2, 100, 100)
+
+    # for x in range(img_x.shape[0]):
+    #     for y in range(img_y.shape[0]):
+    #         # only replace pixels that are actually visible in the image
+    #         # this means we only replace pixels starting from the upper left corner (0,0)
+    #         # until the lower right corner (height, width) of the original image
+    #         # any pixels outside of the original image are ignored
+    #         if img_x[x][y] >= 0. and img_y[x][y] >= 0.: 
+    #             if img_x[x][y] < image_size[2] and img_y[x][y] < image_size[3]:
+    #                 # print(x, y)
+    #                 # print(img_x[x,y], img_y[x,y])
+    #                 bit_mask[int(img_x[x][y])][int(img_y[x][y])] = 0.
+
+
+    #img = grid_sample(img, grid, mode=mode, padding_mode="zeros", align_corners=False)
+    # get ones where there's a patch in the image
+    #ones = torch.ones(patch_size)
+    #bit_mask = grid_sample(ones, grid, mode="nearest", padding_mode="zeros", align_corners=False)
+
+    # invert the bit mask, such that there's zeros where there's a patch and ones where it isn't
+    #bit_mask = 1 - bit_mask
+
+    #plt.imshow(bit_mask.detach().numpy())
     return bit_mask
 
-def get_transformed_patch(image_coords, patch, image_size):
+def get_transformed_patch(grid, patch, image_size):
     """"
     Place all pixel values of the patch at the correct calculated position in a black image
     (for easier addition to the original image).
@@ -194,17 +260,28 @@ def get_transformed_patch(image_coords, patch, image_size):
     Returns:
         a (height, width) numpy array, the placed patch in an otherwise black image
     """
-    transformed_patch = torch.zeros((image_size[0], image_size[1]))
-    img_x, img_y = image_coords
+    transformed_patch = torch.zeros((image_size[2:]))
+
+    #transformed_patch = grid_sample(patch, grid, mode="nearest", padding_mode="zeros", align_corners=False)
+
+
+    # for ind_x, x in enumerate(img_x):
+    #     for ind_y, y in enumerate(img_y):
+    #         if ind_x
+    #         image[][] = patch[ind_x][ind_y]
+    # print("--beginning of transformed patch---")
+    # print(grid.shape)
+    # print(grid.reshape(2, 100, 100).shape)
+    img_x, img_y = grid.reshape(2, 100, 100)
+
+
     for x in range(img_x.shape[0]):
         for y in range(img_y.shape[1]):
             # only replace pixels that are actually visible in the image
             # this means we only replace pixels starting from the upper left corner (0,0)
             # until the lower right corner (height, width) of the original image
-            # any pixels outside of the original image are ignored
-            if img_x[x][y] >= 0. and img_y[x][y] >= 0.:
-                if img_x[x][y] < image_size[0] and img_y[x][y] < image_size[1]:
-                    transformed_patch[img_x[x][y]][img_y[x][y]] = patch[x][y]
+            # any pixels outside img_x, img_y
+            transformed_patch[img_x[x][y]][img_y[x][y]] = patch[x][y]
 
     return transformed_patch
     
@@ -224,18 +301,22 @@ def place_patch(image, patch, attacker_pose, camera_config):
     patch_size = [*patch.shape]
     image_size = [*image.shape]
 
-    T_patch_in_attacker = calc_T_in_attaker_frame(patch_size=patch_size)
+    T_patch_in_attacker = calc_T_in_attaker_frame(patch_size=patch_size[2:])
     
     T_attacker_in_camera = calc_T_attacker_in_camera(attacker_pose[:3], attacker_pose[3:])
 
-    image_coords = project_coords_to_image(patch_size=patch_size, camera_config=camera_config, 
+    coords_grid = project_coords_to_image(patch_size=patch_size, image_size=image_size, camera_config=camera_config, 
                    T_attacker_in_camera=T_attacker_in_camera, T_patch_in_attacker=T_patch_in_attacker)
 
-    bit_mask = get_bit_mask(image_coords, image_size)
-    transformed_patch = get_transformed_patch(image_coords, patch, image_size)
-
-    image *= bit_mask
-    image += transformed_patch
+    bit_mask = get_bit_mask(patch_size, image_size, coords_grid)
+    #transformed_patch = get_transformed_patch(coords_grid, patch, image_size)
+    # import matplotlib.pyplot as plt
+    #plt.imshow(transformed_patch.detach().numpy()[0][0])
+    #plt.imshow(bit_mask[0][0].detach().numpy())
+    #plt.colorbar()
+    # image *= bit_mask
+    #plt.imshow(image[0][0].detach().numpy())
+    #image += transformed_patch
 
     return image
 
@@ -252,9 +333,9 @@ if __name__=="__main__":
 
     # the image is in shape (color channels, height, width)
     # since the images are grayscale, the color channel == 1
-    image = image[0]
+    # we'll extend the shape by one dimension to work with batches of images -> there's only one image so batch_no == 1
+    image = image.unsqueeze(0)
     # the pixel values of the images range from 0 to 255
-
     # pose is stored as x, y, z, phi -> phi is not needed for patch placement
     pose = pose[:3]
 
@@ -271,7 +352,7 @@ if __name__=="__main__":
     # generate a random patch
     # first, generate random values between 0 and 1, 
     # then multiply by 255. to receive values between 0. and 255.
-    patch = (torch.rand(100, 100) * 255.).requires_grad_()
+    patch = (torch.rand(1, 1, 100, 100) * 255.).requires_grad_()
 
 
     # set an arbitrary pose for testing
@@ -284,6 +365,6 @@ if __name__=="__main__":
     # place the patch
     new_image = place_patch(image, patch, pose, config)
     # plot the final image
-    import matplotlib.pyplot as plt
-    plt.imshow(new_image.detach().numpy())
+    # import matplotlib.pyplot as plt
+    #plt.imshow(new_image[0][0].detach().numpy())
     plt.show()
