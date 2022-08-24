@@ -19,13 +19,13 @@
 #define DEBUG_MODULE "APP"
 
 
-const float safety_distance = 0.5;  // min distance between UAV and target in m
+const float distance = 0.5;  // distance between UAV and target in m
 const float angle = 0.0;   // angle between UAV and target
 const float tau = 1/10.0; // update rate
 
 bool start_main = false;
 uint8_t peer_id = 5;
-float max_velo_v = 0.5f;
+float max_velo_v = 1.0f;
 
 // Normalize radians to be in range [-pi,pi]
 // See https://stackoverflow.com/questions/4633177/c-how-to-wrap-a-float-to-the-interval-pi-pi
@@ -133,8 +133,8 @@ void appMain()
 
 
       // eq 6
-      e_H_delta = calcHeadingVec(1.0f*safety_distance, angle); 
-      // radius is 1 * safety_distance
+      e_H_delta = calcHeadingVec(1.0f*distance, angle); 
+      // radius is 1 * distance
       // angle is set to 0°, since the target should always be in the center of the camera image
 
       p_D_prime = vadd(target_pos, e_H_delta);
@@ -143,7 +143,8 @@ void appMain()
       struct vec v_H = vzero(); // target velocity, set to 0 since we don't have this information yet
       v_D = vdiv(vsub(p_D_prime, p_D), tau);
       v_D = vadd(v_D, v_H);
-      v_D = vclamp(v_D, vneg(max_velocity), max_velocity);
+      //v_D = vclamp(v_D, vneg(max_velocity), max_velocity); // -> debugging, doesn't preserve the direction of the vector
+      v_D = vclampnorm(v_D, max_velo_v);
 
       setpoint.mode.x = modeAbs;
       setpoint.mode.y = modeAbs;
