@@ -21,7 +21,7 @@
 
 const float distance = 0.5;  // distance between UAV and target in m
 const float angle = 0.0;   // angle between UAV and target
-const float tau = 1/10.0; // update rate
+const float tau = 1/100.0; // update rate
 
 bool start_main = false;
 uint8_t peer_id = 5;
@@ -106,7 +106,7 @@ void appMain()
 
 
   while(1) {
-    vTaskDelay(M2T(100));
+    vTaskDelay(M2T(10));
 
     if (peerLocalizationIsIDActive(peer_id) && start_main) {
 
@@ -153,10 +153,11 @@ void appMain()
       // eq 8
       estYawRad = radians(logGetFloat(idStabilizerYaw));    // get the current yaw in degrees
       e_D = calcHeadingVec(1.0f, estYawRad);           // radius is 1, angle is current yaw 
-      
+      //struct vec e_O = mkvec(1.0f, 0.0f, 0.0f);
+
       theta_prime_D = calcAngleBetweenVectors(e_D, vsub(target_pos, p_D));
       
-      theta_D = estYawRad;//calcAngleBetweenVectors(e_D, vsub(target_pos, p_D_prime));
+      theta_D = 0.0f; //estYawRad;//calcAngleBetweenVectors(e_D, vsub(target_pos, p_D_prime));
       
       // eq 9
       //omega_prime_D = (theta_prime_D - theta_D) / tau;     // <-- incorrect, the difference does not always provide the shortest angle between the two thetas
