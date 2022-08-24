@@ -114,7 +114,7 @@ void appMain()
       p_D.y = logGetFloat(idYEstimate);
       p_D.z = logGetFloat(idZEstimate);
 
-      struct vec max_velocity = mkvec(max_velo_v, max_velo_v, max_velo_v);
+      //struct vec max_velocity = mkvec(max_velo_v, max_velo_v, max_velo_v);
 
       // Query position of our target
       peerLocalizationOtherPosition_t* target = peerLocalizationGetPositionByID(peer_id);
@@ -146,10 +146,9 @@ void appMain()
       //v_D = vclamp(v_D, vneg(max_velocity), max_velocity); // -> debugging, doesn't preserve the direction of the vector
       v_D = vclampnorm(v_D, max_velo_v);
 
-      setpoint.mode.x = modeAbs;
-      setpoint.mode.y = modeAbs;
-      setpoint.position.x = p_D_prime.x;
-      setpoint.position.y = p_D_prime.y;
+      setpoint.velocity.x = v_D.x;
+      setpoint.velocity.y = v_D.y;
+
 
       // eq 8
       estYawRad = radians(logGetFloat(idStabilizerYaw));    // get the current yaw in degrees
