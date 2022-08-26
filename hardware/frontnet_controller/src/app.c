@@ -16,6 +16,7 @@
 #include "param.h"
 #include "math3d.h"
 
+
 #define DEBUG_MODULE "APP"
 
 
@@ -141,7 +142,7 @@ void appMain()
 
       // eq 7
       struct vec v_H = vzero(); // target velocity, set to 0 since we don't have this information yet
-      v_D = vdiv(vsub(p_D, p_D_prime), tau);
+      v_D = vdiv(vsub(p_D_prime, p_D), tau);
       v_D = vadd(v_D, v_H);
       //v_D = vclamp(v_D, vneg(max_velocity), max_velocity); // -> debugging, doesn't preserve the direction of the vector
       v_D = vclampnorm(v_D, max_velo_v);
@@ -179,7 +180,7 @@ void appMain()
       commanderSetSetpoint(&setpoint, 3);
 
       // update current position
-      p_D = p_D_prime;
+      //p_D = p_D_prime;
 
 
       }//end if
