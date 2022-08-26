@@ -89,8 +89,8 @@ void appMain()
   struct vec v_D = vzero(); // velocity of UAV
   
   float estYawRad;  // estimate of current yaw angle
-  float theta_prime_D; // angle between current UAV heading and desired heading
-  float theta_D; // angle between current UAV heading and last heading ???
+  //float theta_prime_D; // angle between current UAV heading and desired heading
+  //float theta_D; // angle between current UAV heading and last heading ???
   float omega_prime_D; // attitude rate
 
 
@@ -141,7 +141,7 @@ void appMain()
 
       // eq 7
       struct vec v_H = vzero(); // target velocity, set to 0 since we don't have this information yet
-      v_D = vdiv(vsub(p_D_prime, p_D), tau);
+      v_D = vdiv(vsub(p_D, p_D_prime), tau);
       v_D = vadd(v_D, v_H);
       //v_D = vclamp(v_D, vneg(max_velocity), max_velocity); // -> debugging, doesn't preserve the direction of the vector
       v_D = vclampnorm(v_D, max_velo_v);
@@ -153,15 +153,21 @@ void appMain()
       // eq 8
       estYawRad = radians(logGetFloat(idStabilizerYaw));    // get the current yaw in degrees
       e_D = calcHeadingVec(1.0f, estYawRad);           // radius is 1, angle is current yaw 
-      //struct vec e_O = mkvec(1.0f, 0.0f, 0.0f);
+      //struct vec e_0 = mkvec(1.0f, 0.0f, 0.0f);
+      //e_D = mkvec(1.0f, 0.0f, 0.0f);
 
-      theta_prime_D = calcAngleBetweenVectors(e_D, vsub(target_pos, p_D));
+      struct vec target_vector = vsub(target_pos, p_D);
+      float angle_target = atan2f(target_vector.y, target_vector.x);
+
+      //theta_prime_D = calcAngleBetweenVectors(e_D, vsub(target_pos, p_D));
       
-      theta_D = 0.0f; //estYawRad;//calcAngleBetweenVectors(e_D, vsub(target_pos, p_D_prime));
+      //theta_D = calcAngleBetweenVectors(e_D, vsub(target_pos, p_D_prime));  //estYawRad;
       
       // eq 9
-      //omega_prime_D = (theta_prime_D - theta_D) / tau;     // <-- incorrect, the difference does not always provide the shortest angle between the two thetas
-      omega_prime_D = shortest_signed_angle_radians(theta_prime_D, theta_D) / tau;
+      // omega_prime_D = (theta_prime_D - theta_D) / tau;     // <-- incorrect, the difference does not always provide the shortest angle between the two thetas
+      //omega_prime_D = shortest_signed_angle_radians(theta_prime_D, theta_D) / tau;
+      //omega_prime_D = -theta_prime_D / tau;
+      omega_prime_D = shortest_signed_angle_radians(estYawRad, angle_target) / tau;
       omega_prime_D = clamp(omega_prime_D, -0.8f, 0.8f);
 
       setpoint.mode.yaw = modeVelocity;
@@ -177,20 +183,20 @@ void appMain()
 
 
       }//end if
-    else{
+    // else{
 
-      p_D.x = logGetFloat(idXEstimate);
-      p_D.y = logGetFloat(idYEstimate);
-      p_D.z = logGetFloat(idZEstimate);
+    //   p_D.x = logGetFloat(idXEstimate);
+    //   p_D.y = logGetFloat(idYEstimate);
+    //   p_D.z = logGetFloat(idZEstimate);
 
-    }//end else
+    // }//end else
   }//end while
 }//end main
 
 
 /**
- * Parameters to set the estimator and controller type
- * for the stabilizer module, or to do an emergency stop
+ * Parameters to set the start flag, peer id and max velocity
+ * for the frontnet-like controller.
  */
 PARAM_GROUP_START(frontnet)
 /**
@@ -202,3 +208,6 @@ PARAM_ADD_CORE(PARAM_FLOAT, maxvelo, &max_velo_v)
 
 
 PARAM_GROUP_STOP(frontnet)
+// move to script
+
+// add new log group for local variables
