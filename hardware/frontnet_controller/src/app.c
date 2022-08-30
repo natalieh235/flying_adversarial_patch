@@ -28,6 +28,9 @@ bool start_main = false;
 uint8_t peer_id = 5;
 float max_velo_v = 1.0f;
 
+struct vec target_pos;
+float target_yaw;
+
 // Normalize radians to be in range [-pi,pi]
 // See https://stackoverflow.com/questions/4633177/c-how-to-wrap-a-float-to-the-interval-pi-pi
 static inline float normalize_radians(float radians)
@@ -65,6 +68,7 @@ float calcAngleBetweenVectors(struct vec vec1, struct vec vec2)
   return acosf(dot);
 }
 
+// calculate the vector of the heading, angle in radians
 struct vec calcHeadingVec(float radius, float angle)
 {
   float x = (float) 0.0f + radius * cosf(angle);
@@ -87,7 +91,7 @@ void appMain()
   struct vec e_D = vzero(); // unit vector of UAV
   struct vec e_H_delta = vzero(); // unit vector of target multiplied by safety distance
   
-  struct vec v_D = vzero(); // velocity of UAV
+  // struct vec v_D = vzero(); // velocity of UAV
   
   float estYawRad;  // estimate of current yaw angle
   //float theta_prime_D; // angle between current UAV heading and desired heading
@@ -117,40 +121,45 @@ void appMain()
 
       //struct vec max_velocity = mkvec(max_velo_v, max_velo_v, max_velo_v);
 
+      // velocity control
       // Query position of our target
       peerLocalizationOtherPosition_t* target = peerLocalizationGetPositionByID(peer_id);
-      struct vec target_pos = mkvec(target->pos.x, target->pos.y, target->pos.z);
+      target_pos = mkvec(target->pos.x, target->pos.y, target->pos.z);
+      target_yaw = target->yaw;
 
       // z is kept at same height as target
       setpoint.mode.z = modeAbs;
       setpoint.position.z = target_pos.z;
 
-      // position is handled given velocity and attitude rate
-      setpoint.mode.x = modeVelocity;
-      setpoint.mode.y = modeVelocity;
-      // setpoint.position.x = p_D_prime.x;
-      // setpoint.position.y = p_D_prime.y;
-      // setpoint.position.z = p_D_prime.z;
+      // position is handled given position and attitude rate
+
+      setpoint.mode.x = modeAbs;
+      setpoint.mode.y = modeAbs;
 
 
       // eq 6
-      e_H_delta = calcHeadingVec(1.0f*distance, angle); 
+      e_H_delta = calcHeadingVec(1.0f*distance, target_yaw);//angle); 
       // radius is 1 * distance
-      // angle is set to 0°, since the target should always be in the center of the camera image
+      // angle is set to the current yaw angle (rad) of the target
 
       p_D_prime = vadd(target_pos, e_H_delta);
+      setpoint.position.x = p_D_prime.x;
+      setpoint.position.y = p_D_prime.y;
+      setpoint.position.z = p_D_prime.z;
 
-      // eq 7
-      struct vec v_H = vzero(); // target velocity, set to 0 since we don't have this information yet
-      v_D = vdiv(vsub(p_D_prime, p_D), tau);
-      v_D = vadd(v_D, v_H);
-      //v_D = vclamp(v_D, vneg(max_velocity), max_velocity); // -> debugging, doesn't preserve the direction of the vector
-      v_D = vclampnorm(v_D, max_velo_v);
+      // velocity control -> produces oscillation of the CF in x and y direction
+      // // eq 7
+      // struct vec v_H = vzero(); // target velocity, set to 0 since we don't have this information yet
+      // v_D = vdiv(vsub(p_D_prime, p_D), tau);
+      // v_D = vadd(v_D, v_H);
+      // //v_D = vclamp(v_D, vneg(max_velocity), max_velocity); // -> debugging, doesn't preserve the direction of the vector
+      // v_D = vclampnorm(v_D, max_velo_v);
 
-      setpoint.velocity.x = v_D.x;
-      setpoint.velocity.y = v_D.y;
+      // setpoint.velocity.x = v_D.x;
+      // setpoint.velocity.y = v_D.y;
 
 
+      // heading control
       // eq 8
       estYawRad = radians(logGetFloat(idStabilizerYaw));    // get the current yaw in degrees
       e_D = calcHeadingVec(1.0f, estYawRad);           // radius is 1, angle is current yaw 
@@ -166,8 +175,6 @@ void appMain()
       
       // eq 9
       // omega_prime_D = (theta_prime_D - theta_D) / tau;     // <-- incorrect, the difference does not always provide the shortest angle between the two thetas
-      //omega_prime_D = shortest_signed_angle_radians(theta_prime_D, theta_D) / tau;
-      //omega_prime_D = -theta_prime_D / tau;
       omega_prime_D = shortest_signed_angle_radians(estYawRad, angle_target) / tau;
       omega_prime_D = clamp(omega_prime_D, -0.8f, 0.8f);
 
@@ -209,6 +216,11 @@ PARAM_ADD_CORE(PARAM_FLOAT, maxvelo, &max_velo_v)
 
 
 PARAM_GROUP_STOP(frontnet)
-// move to script
 
 // add new log group for local variables
+LOG_GROUP_START(app)
+LOG_ADD(LOG_FLOAT, targetx, &target_pos.x)
+LOG_ADD(LOG_FLOAT, targety, &target_pos.y)
+LOG_ADD(LOG_FLOAT, targetz, &target_pos.z)
+LOG_ADD(LOG_FLOAT, targetyaw, &target_yaw)
+LOG_GROUP_STOP(app)
