@@ -31,34 +31,6 @@ float max_velo_v = 1.0f;
 struct vec target_pos;
 float target_yaw;
 
-// Normalize radians to be in range [-pi,pi]
-// See https://stackoverflow.com/questions/4633177/c-how-to-wrap-a-float-to-the-interval-pi-pi
-static inline float normalize_radians(float radians)
-{
-	// Copy the sign of the value in radians to the value of pi.
-	float signed_pi = copysignf(M_PI_F, radians);
-	// Set the value of difference to the appropriate signed value between pi and -pi.
-	radians = fmodf(radians + signed_pi, 2 * M_PI_F) - signed_pi;
-	return radians;
-}
-
-// modulo operation that uses the floored definition (as in Python), rather than
-// the truncated definition used for the % operator in C
-// See https://en.wikipedia.org/wiki/Modulo_operation
-static inline float fmodf_floored(float x, float n)
-{
-	return x - floorf(x / n) * n;
-}
-
-// compute shortest signed angle between two given angles (in range [-pi, pi])
-// See https://stackoverflow.com/questions/1878907/how-can-i-find-the-difference-between-two-angles
-static inline float shortest_signed_angle_radians(float start, float goal)
-{
-	float diff = goal - start;
-	float signed_diff = fmodf_floored(diff + M_PI_F, 2 * M_PI_F) - M_PI_F;
-	return signed_diff;
-}
-
 // helper for calculating the angle between two vectors
 float calcAngleBetweenVectors(struct vec vec1, struct vec vec2)
 {
@@ -79,35 +51,27 @@ struct vec calcHeadingVec(float radius, float angle)
 void appMain()
 {
 
-  //TODO: add function to lift off and set start_main to true
-
   static setpoint_t setpoint;
-
-  // struct vec max_velocity = mkvec(max_velo_v, max_velo_v, max_velo_v);
   
   struct vec p_D = vzero();  // current position
   struct vec p_D_prime = vzero(); // next position
 
-  struct vec e_D = vzero(); // unit vector of UAV
-  struct vec e_H_delta = vzero(); // unit vector of target multiplied by safety distance
+  struct vec e_D = vzero(); // heading vector of UAV
+  struct vec e_H_delta = vzero(); // heading vector of target multiplied by safety distance
   
   // struct vec v_D = vzero(); // velocity of UAV
   
   float estYawRad;  // estimate of current yaw angle
   //float theta_prime_D; // angle between current UAV heading and desired heading
-  //float theta_D; // angle between current UAV heading and last heading ???
+  //float theta_D; // angle between current UAV heading and last heading
   float omega_prime_D; // attitude rate
 
-
-
-  //vTaskDelay(M2T(3000));
 
   logVarId_t idStabilizerYaw = logGetVarId("stabilizer", "yaw");
 
   logVarId_t idXEstimate = logGetVarId("stateEstimate", "x");
   logVarId_t idYEstimate = logGetVarId("stateEstimate", "y");
   logVarId_t idZEstimate = logGetVarId("stateEstimate", "z");
-
 
 
   while(1) {
@@ -118,8 +82,6 @@ void appMain()
       p_D.x = logGetFloat(idXEstimate);
       p_D.y = logGetFloat(idYEstimate);
       p_D.z = logGetFloat(idZEstimate);
-
-      //struct vec max_velocity = mkvec(max_velo_v, max_velo_v, max_velo_v);
 
       // velocity control
       // Query position of our target
@@ -163,8 +125,6 @@ void appMain()
       // eq 8
       estYawRad = radians(logGetFloat(idStabilizerYaw));    // get the current yaw in degrees
       e_D = calcHeadingVec(1.0f, estYawRad);           // radius is 1, angle is current yaw 
-      //struct vec e_0 = mkvec(1.0f, 0.0f, 0.0f);
-      //e_D = mkvec(1.0f, 0.0f, 0.0f);
 
       struct vec target_vector = vsub(target_pos, p_D);
       float angle_target = atan2f(target_vector.y, target_vector.x);
@@ -191,13 +151,6 @@ void appMain()
 
 
       }//end if
-    // else{
-
-    //   p_D.x = logGetFloat(idXEstimate);
-    //   p_D.y = logGetFloat(idYEstimate);
-    //   p_D.z = logGetFloat(idZEstimate);
-
-    // }//end else
   }//end while
 }//end main
 
@@ -218,9 +171,9 @@ PARAM_ADD_CORE(PARAM_FLOAT, maxvelo, &max_velo_v)
 PARAM_GROUP_STOP(frontnet)
 
 // add new log group for local variables
-LOG_GROUP_START(app)
+LOG_GROUP_START(frontnet)
 LOG_ADD(LOG_FLOAT, targetx, &target_pos.x)
 LOG_ADD(LOG_FLOAT, targety, &target_pos.y)
 LOG_ADD(LOG_FLOAT, targetz, &target_pos.z)
 LOG_ADD(LOG_FLOAT, targetyaw, &target_yaw)
-LOG_GROUP_STOP(app)
+LOG_GROUP_STOP(frontnet)
