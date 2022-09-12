@@ -132,6 +132,8 @@ def project_coords_to_image(patch_size, image_size, camera_config, T_attacker_in
     base_grid[3].fill_(1)
 
     base_grid = base_grid.view(4, -1)
+    print("--base grid--")
+    print(base_grid.shape)
 
     #transfprmation_matrix = (T_attacker_in_camera @ T_patch_in_attacker) / torch.tensor([0.5 * w, 0.5 * h])
 
@@ -174,18 +176,19 @@ def project_coords_to_image(patch_size, image_size, camera_config, T_attacker_in
     # simoultaneously round both arrays
     img_x = torch.round(u/z, decimals=0)
     img_y = torch.round(v/z, decimals=0)
-
     # reshaping and stacking to get valid grid
     #img_x = torch.reshape(img_x, (h, w))
     #img_y = torch.reshape(img_y, (h, w))
-    grid = torch.stack([img_x, img_y]).mT.reshape((1, *img_x.shape, 2))
+
+    grid = torch.stack([img_x, img_y]).mT.reshape((1, 1, h, w, 2))
+    grid_upsampled = torch.nn.functional.interpolate(grid, size=(oh, ow, 2))
 
     print("--end of projection--")
     print(grid.shape)
-    print(grid[0])
-    print()
-    #print(grid[:])
-    return grid
+    #print(grid[0])
+    print("---upsampled---")
+    print(grid_upsampled.shape)
+    return grid_upsampled.squeeze(1)
     
 def get_bit_mask(patch_size, image_size, grid):
     """"
@@ -308,12 +311,14 @@ def place_patch(image, patch, attacker_pose, camera_config):
     coords_grid = project_coords_to_image(patch_size=patch_size, image_size=image_size, camera_config=camera_config, 
                    T_attacker_in_camera=T_attacker_in_camera, T_patch_in_attacker=T_patch_in_attacker)
 
-    bit_mask = get_bit_mask(patch_size, image_size, coords_grid)
+
+    transformed_patch = grid_sample(patch, coords_grid)
+
+    #bit_mask = get_bit_mask(patch_size, image_size, coords_grid)
     #transformed_patch = get_transformed_patch(coords_grid, patch, image_size)
-    # import matplotlib.pyplot as plt
-    #plt.imshow(transformed_patch.detach().numpy()[0][0])
+    plt.imshow(transformed_patch.detach().numpy()[0][0], cmap='gray')
     #plt.imshow(bit_mask[0][0].detach().numpy())
-    #plt.colorbar()
+    plt.colorbar()
     # image *= bit_mask
     #plt.imshow(image[0][0].detach().numpy())
     #image += transformed_patch
@@ -352,7 +357,7 @@ if __name__=="__main__":
     # generate a random patch
     # first, generate random values between 0 and 1, 
     # then multiply by 255. to receive values between 0. and 255.
-    patch = (torch.rand(1, 1, 100, 100) * 255.).requires_grad_()
+    patch = (torch.rand(1, 1, 50, 50) * 255.).requires_grad_()
 
 
     # set an arbitrary pose for testing
