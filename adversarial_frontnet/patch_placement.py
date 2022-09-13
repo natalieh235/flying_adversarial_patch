@@ -192,62 +192,64 @@ def project_coords_to_image(patch_size, image_size, camera_config, T_attacker_in
     #plt.show()
     # print("---image from interpolated grid---")
     grid_upsampled = torch.nn.functional.interpolate(grid, size=(oh, ow, 2)).squeeze(0)
+    grid_normalized = 2* ((grid_upsampled - grid_upsampled.min()) / (grid_upsampled.max() - grid_upsampled.min())) -1
 
-    patch = torch.ones(h, w)
-    patch_interpolated = torch.nn.functional.interpolate(patch.unsqueeze(0).unsqueeze(0), size=(oh, ow))
-    print(patch_interpolated.shape)
+    print(grid_normalized.min(), grid_normalized.max())
+    patch = torch.ones(1, 1, h, w)
+    #patch_interpolated = torch.nn.functional.interpolate(patch.unsqueeze(0).unsqueeze(0), size=(oh, ow))
+    #print(patch_interpolated.shape)
 
-    transformed_patch_3 = grid_sample(patch_interpolated, grid_upsampled)
+    transformed_patch_3 = grid_sample(patch, grid_normalized)
     print(transformed_patch_3.shape)
     plt.imshow(transformed_patch_3[0][0].detach().numpy())
     plt.show()
     
-    grid_upsampled = grid_upsampled.squeeze(0).permute(2, 0, 1)
-    grid_x, grid_y = grid_upsampled.int()
-    print(grid_x.shape, grid_y.shape)
-    print("--from interpolated grid --")
-    transformed_patch = torch.zeros(oh, ow)
-    for x in range(oh):
-        for y in range(ow):
-            #print(x, y)
-            if grid_x[x][y] >= 0. and grid_y[x][y] >= 0.:
-                if grid_x[x][y] < oh and grid_y[x][y] < ow:
-                    #print(grid_x[x][y], grid_y[x,y])
-                    transformed_patch[grid_x[x][y]][grid_y[x][y]] = patch_interpolated.squeeze(0).squeeze(0)[x][y]
-    plt.imshow(transformed_patch)
-    plt.show()
-
-
-    # # reshaping for easier use with following for loops
-    # print("--numpy image--")
-    # img_x = img_x.reshape(h, w).int()
-    # img_y = img_y.reshape(h, w).int()
-    # #print("--values in img_x + img_y")
-    # #print(img_x[0][0])
-    # #print(img_y[0][0])
-    # patch_2 = torch.ones(h, w)
-    # transformed_patch_2 = torch.zeros(oh, ow)
-    # for x in range(img_x.shape[0]):
-    #     for y in range(img_y.shape[1]):
-    #         # only replace pixels that are actually visible in the image
-    #         # this means we only replace pixels starting from the upper left corner (0,0)
-    #         # until the lower right corner (height, width) of the original image
-    #         # any pixels outside of the original image are ignored
-    #         if img_x[x][y] >= 0. and img_x[x][y] >= 0.:
-    #             if img_x[x][y] < oh and img_y[x][y] < ow:
-    #                 transformed_patch_2[img_x[x][y]][img_y[x][y]] = patch_2[x][y]
-
-    # plt.imshow(transformed_patch_2)
+    # grid_upsampled = grid_upsampled.squeeze(0).permute(2, 0, 1)
+    # grid_x, grid_y = grid_upsampled.int()
+    # print(grid_x.shape, grid_y.shape)
+    # print("--from interpolated grid --")
+    # transformed_patch = torch.zeros(oh, ow)
+    # for x in range(oh):
+    #     for y in range(ow):
+    #         #print(x, y)
+    #         if grid_x[x][y] >= 0. and grid_y[x][y] >= 0.:
+    #             if grid_x[x][y] < oh and grid_y[x][y] < ow:
+    #                 #print(grid_x[x][y], grid_y[x,y])
+    #                 transformed_patch[grid_x[x][y]][grid_y[x][y]] = patch_interpolated.squeeze(0).squeeze(0)[x][y]
+    # plt.imshow(transformed_patch)
     # plt.show()
 
 
+    # # # reshaping for easier use with following for loops
+    # # print("--numpy image--")
+    # # img_x = img_x.reshape(h, w).int()
+    # # img_y = img_y.reshape(h, w).int()
+    # # #print("--values in img_x + img_y")
+    # # #print(img_x[0][0])
+    # # #print(img_y[0][0])
+    # # patch_2 = torch.ones(h, w)
+    # # transformed_patch_2 = torch.zeros(oh, ow)
+    # # for x in range(img_x.shape[0]):
+    # #     for y in range(img_y.shape[1]):
+    # #         # only replace pixels that are actually visible in the image
+    # #         # this means we only replace pixels starting from the upper left corner (0,0)
+    # #         # until the lower right corner (height, width) of the original image
+    # #         # any pixels outside of the original image are ignored
+    # #         if img_x[x][y] >= 0. and img_x[x][y] >= 0.:
+    # #             if img_x[x][y] < oh and img_y[x][y] < ow:
+    # #                 transformed_patch_2[img_x[x][y]][img_y[x][y]] = patch_2[x][y]
+
+    # # plt.imshow(transformed_patch_2)
+    # # plt.show()
 
 
-    print("--end of projection--")
-    print(grid.shape)
-    #print(grid[0])
-    print("---upsampled---")
-    print(grid_upsampled.shape)
+
+
+    # print("--end of projection--")
+    # print(grid.shape)
+    # #print(grid[0])
+    # print("---upsampled---")
+    # print(grid_upsampled.shape)
     return grid_upsampled.squeeze(1)
     
 def get_bit_mask(patch_size, image_size, grid):
