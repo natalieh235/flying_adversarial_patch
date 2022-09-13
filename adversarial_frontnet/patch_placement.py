@@ -117,7 +117,7 @@ def project_coords_to_image(patch_size, image_size, camera_config, T_attacker_in
     indy = torch.tensor(indy).flatten()
     indx = torch.tensor(indx).flatten()
     lin_homg_ind = torch.stack((indy, indx, torch.zeros_like(indx), torch.ones_like(indx)))
-    # print(lin_homg_ind.shape)
+    print(lin_homg_ind.shape)
 
     oh, ow = image_size[2:]
     h, w = patch_size[2:]
@@ -181,7 +181,67 @@ def project_coords_to_image(patch_size, image_size, camera_config, T_attacker_in
     #img_y = torch.reshape(img_y, (h, w))
 
     grid = torch.stack([img_x, img_y]).mT.reshape((1, 1, h, w, 2))
-    grid_upsampled = torch.nn.functional.interpolate(grid, size=(oh, ow, 2))
+
+    #print("--values in grid--")
+    #print(grid[0][0][0][0])
+    #print("patch size: ", patch_size)
+    #patch = torch.ones(*patch_size)
+    #patch_transformed = grid_sample(patch, grid.squeeze(0), align_corners=True, mode='bilinear', padding_mode='zeros')
+    #print(patch_transformed.shape)
+    #plt.imshow(patch_transformed.detach().numpy()[0][0])
+    #plt.show()
+    # print("---image from interpolated grid---")
+    grid_upsampled = torch.nn.functional.interpolate(grid, size=(oh, ow, 2)).squeeze(0)
+
+    patch = torch.ones(h, w)
+    patch_interpolated = torch.nn.functional.interpolate(patch.unsqueeze(0).unsqueeze(0), size=(oh, ow))
+    print(patch_interpolated.shape)
+
+    transformed_patch_3 = grid_sample(patch_interpolated, grid_upsampled)
+    print(transformed_patch_3.shape)
+    plt.imshow(transformed_patch_3[0][0].detach().numpy())
+    plt.show()
+    
+    grid_upsampled = grid_upsampled.squeeze(0).permute(2, 0, 1)
+    grid_x, grid_y = grid_upsampled.int()
+    print(grid_x.shape, grid_y.shape)
+    print("--from interpolated grid --")
+    transformed_patch = torch.zeros(oh, ow)
+    for x in range(oh):
+        for y in range(ow):
+            #print(x, y)
+            if grid_x[x][y] >= 0. and grid_y[x][y] >= 0.:
+                if grid_x[x][y] < oh and grid_y[x][y] < ow:
+                    #print(grid_x[x][y], grid_y[x,y])
+                    transformed_patch[grid_x[x][y]][grid_y[x][y]] = patch_interpolated.squeeze(0).squeeze(0)[x][y]
+    plt.imshow(transformed_patch)
+    plt.show()
+
+
+    # # reshaping for easier use with following for loops
+    # print("--numpy image--")
+    # img_x = img_x.reshape(h, w).int()
+    # img_y = img_y.reshape(h, w).int()
+    # #print("--values in img_x + img_y")
+    # #print(img_x[0][0])
+    # #print(img_y[0][0])
+    # patch_2 = torch.ones(h, w)
+    # transformed_patch_2 = torch.zeros(oh, ow)
+    # for x in range(img_x.shape[0]):
+    #     for y in range(img_y.shape[1]):
+    #         # only replace pixels that are actually visible in the image
+    #         # this means we only replace pixels starting from the upper left corner (0,0)
+    #         # until the lower right corner (height, width) of the original image
+    #         # any pixels outside of the original image are ignored
+    #         if img_x[x][y] >= 0. and img_x[x][y] >= 0.:
+    #             if img_x[x][y] < oh and img_y[x][y] < ow:
+    #                 transformed_patch_2[img_x[x][y]][img_y[x][y]] = patch_2[x][y]
+
+    # plt.imshow(transformed_patch_2)
+    # plt.show()
+
+
+
 
     print("--end of projection--")
     print(grid.shape)
@@ -316,9 +376,9 @@ def place_patch(image, patch, attacker_pose, camera_config):
 
     #bit_mask = get_bit_mask(patch_size, image_size, coords_grid)
     #transformed_patch = get_transformed_patch(coords_grid, patch, image_size)
-    plt.imshow(transformed_patch.detach().numpy()[0][0], cmap='gray')
+    #plt.imshow(transformed_patch.detach().numpy()[0][0], cmap='gray')
     #plt.imshow(bit_mask[0][0].detach().numpy())
-    plt.colorbar()
+    #plt.colorbar()
     # image *= bit_mask
     #plt.imshow(image[0][0].detach().numpy())
     #image += transformed_patch
