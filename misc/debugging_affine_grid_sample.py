@@ -33,11 +33,11 @@ import matplotlib.pyplot as plt
 # ori_affine_grid = torch.nn.functional.affine_grid(theta_inv, (1, 1, 1, 50, 50), align_corners=False)
 # print(ori_affine_grid, ori_affine_grid.shape)
 
-h = 5
+h = 10
 w = 5
 
-ph = 2
-pw = 2
+ph = 1
+pw = 1
 
 image = torch.zeros(1, 1, h, w).requires_grad_(True)
 patch = torch.ones(1, 1, ph, pw).requires_grad_(True)
@@ -78,20 +78,21 @@ transformed_patch = torch.nn.functional.grid_sample(patch, affine_grid, align_co
 # plt.imshow(transformed_patch[0][0].detach().numpy())
 # plt.show()
 
+
 print("own implementation")
 base_grid = torch.empty(3, h, w)
 x_grid = torch.linspace(-1, 1, steps=w)
-x_grid = x_grid * (h - 1.) / h
+x_grid = x_grid * (w - 1.) / w
 base_grid[0].copy_(x_grid)
 y_grid = torch.linspace(-1, 1, steps=h).unsqueeze_(-1)
-y_grid = y_grid * (w - 1.) / w
+y_grid = y_grid * (h - 1.) / h
 base_grid[1].copy_(y_grid)
 base_grid[2].fill_(1)
 # base_grid[3].fill_(1)
 base_grid = base_grid.view(3, -1)
 print(base_grid.shape)
 
-u, v, z = rot_matrix.squeeze(0) @ base_grid # squeeze because rot matrix is in shape [1, 3, 3]
+u, v, z = rot_matrix.squeeze(0).mT @ base_grid # squeeze because rot matrix is in shape [1, 3, 3]
 img_x = u/z
 img_y = v/z
 
@@ -105,65 +106,9 @@ print("grid: ", grid, grid.shape)
 transformed_patch_own = torch.nn.functional.grid_sample(patch, grid, align_corners=False)
 
 print("comparison of the final transformed patches")
-print("pytorch: ", transformed_patch)
-print("own: ", transformed_patch_own)
+print("pytorch: ", transformed_patch, transformed_patch.shape)
+print("own: ", transformed_patch_own, transformed_patch_own.shape)
+
+print(transformed_patch-transformed_patch_own)
 # plt.imshow(transformed_patch_own[0][0].detach().numpy())
 # plt.show()
-
-### 3d
-# rot_matrix = torch.zeros((1, 4, 4), dtype=torch.float32)
-# rot_matrix[:, 0, 0] = cos
-# rot_matrix[:, 0, 1] = -sin
-# rot_matrix[:, 1, 0] = sin
-# rot_matrix[:, 1, 1] = cos
-# rot_matrix[:, 0, 2] = 0 # right
-# rot_matrix[:, 1, 2] = 0 # bottom
-# rot_matrix[:, 3, 3] = 1
-
-
-# inv_rot_matrix = torch.pinverse(rot_matrix)[:, :3]
-# print(inv_rot_matrix, inv_rot_matrix.shape)
-
-# affine_grid = torch.nn.functional.affine_grid(inv_rot_matrix, size=(1, 1, 1, h, w), align_corners=False)
-
-# transformed_patch = torch.nn.functional.grid_sample(patch.unsqueeze(0), affine_grid, align_corners=False)
-# plt.imshow(transformed_patch[0][0][0].detach().numpy())
-# plt.show()
-
-# base_grid = torch.empty(3, h, w)
-
-# row_0 = torch.linspace(-1, 1, steps=w)
-# #row_0 = (row_0 * (w - 1.) / w)
-
-# row_1 = torch.linspace(-1, 1, steps=h).unsqueeze(-1)
-# #row_1 = (row_1 * (h - 1.) / h).unsqueeze_(-1)
-
-
-# base_grid[0].copy_(row_0)
-# base_grid[1].copy_(row_1)
-# base_grid[2].fill_(1)
-
-# grid = base_grid.view(1, h*w, 3)
-
-
-# theta_inv = torch.inverse(rot_matrix)[:, :2]
-
-# print(theta_inv, theta_inv.shape)
-# #theta_transposed = theta_inv.transpose(1,2)
-# #print(theta_transposed, theta_transposed.shape)
-
-# #affine_grid = grid.bmm(theta_transposed).view(1, h, w, 2)
-# u, v, z = (rot_matrix @ grid.view(3, -1)).squeeze(0)
-# affine_grid = torch.stack([u/z, v/z]).view(1, h, w, 2)
-# print(affine_grid, affine_grid.shape)
-
-
-# rot_matrix = torch.tensor([[0.36, 0.48, -0.80, 0.5],
-#               [-0.8, 0.6, 0.0, 0.5],
-#               [0.48, 0.64, 0.60, 0.0],
-#               [0.0, 0.0, 0.0, 1.0]])
-
-# inv_rot_matrix = torch.pinverse(rot_matrix)[:, :3]
-# print(inv_rot_matrix, inv_rot_matrix.shape)
-
-#affine_grid = torch.nn.functional.affine_grid(inv_rot_matrix.mT.unsqueeze(0), size=(1, 1, 1, 96, 160), align_corners=False)
