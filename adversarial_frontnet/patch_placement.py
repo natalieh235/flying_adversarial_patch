@@ -95,7 +95,7 @@ def calc_T_attacker_in_camera(attacker_xyz, attacker_quaternions):
     
     return T_attacker_in_camera
 
-def project_coords_to_image(patch_size, image_size, camera_config, T_attacker_in_camera, T_patch_in_attacker):
+def affine_grid(patch_size, image_size, camera_config, T_attacker_in_camera, T_patch_in_attacker):
     """
     Function for calculating the image 2D coordinates of the whole patch.
     Has the same functionality as cv2.projectPoints().
@@ -110,55 +110,40 @@ def project_coords_to_image(patch_size, image_size, camera_config, T_attacker_in
         img_y: a (patch_height, patch_width) numpy array, including all projected y coordinates of the patch
     """
     # get a (4, n) matrix with all pixel coordinates of the patch
-    # indy, indx = np.indices((patch_size[2], patch_size[3]), dtype=np.float32)
-    # # # lin_homg_ind = np.array([indx.ravel(), indy.ravel(), np.zeros_like(indx).ravel(), np.ones_like(indx).ravel()])
-    # # # print(lin_homg_ind.shape)
-    
-    # indy = torch.tensor(indy).flatten()
-    # indx = torch.tensor(indx).flatten()
-    # lin_homg_ind = torch.stack((indy, indx, torch.zeros_like(indx), torch.ones_like(indx)))
-    # #print(lin_homg_ind.shape)
 
     oh, ow = image_size[2:]
     h, w = patch_size[2:]
-    # d = 0.5
-    # base_grid = torch.empty(4, oh, ow)
-    # #print(base_grid.shape)
-    # x_grid = torch.linspace(-1, 1, steps=ow)
-    # x_grid = x_grid * (oh - 1.) / oh
-    # base_grid[0].copy_(x_grid)
-    # y_grid = torch.linspace(-1, 1, steps=oh).unsqueeze_(-1)
-    # y_grid = y_grid * (ow - 1.) / ow
-    # base_grid[1].copy_(y_grid)
-    # base_grid[2].fill_(0)
-    # base_grid[3].fill_(1)
 
-    # base_grid = base_grid.view(4, -1)
-    # print("--base grid--")
-    # print(base_grid)
-    # print(base_grid.shape)
-
-    #transfprmation_matrix = (T_attacker_in_camera @ T_patch_in_attacker) / torch.tensor([0.5 * w, 0.5 * h])
+    base_grid = torch.empty(4, oh, ow)
+    x_grid = torch.linspace(-1, 1, steps=ow)
+    x_grid = x_grid * (ow - 1.) / ow
+    base_grid[0].copy_(x_grid)
+    y_grid = torch.linspace(-1, 1, steps=oh).unsqueeze_(-1)
+    y_grid = y_grid * (oh - 1.) / oh
+    base_grid[1].copy_(y_grid)
+    base_grid[2].fill_(0)
+    base_grid[3].fill_(1)
+    base_grid = base_grid.view(4, -1)
+    print(base_grid.shape)
 
     # transform coordinates to camera frame
-    #coords_in_camera = T_attacker_in_camera @ T_patch_in_attacker @ lin_homg_ind
+
     # coords_in_camera = T_attacker_in_camera @ T_patch_in_attacker @ base_grid
 
-    #print(coords_in_camera_ori[:10])
-    #print(coords_in_camera_grid[:10])
 
-    # convert camera config to numpy arraysase_grid#
+    # code not working with distortion coefficients
+    # # convert camera config to numpy arraysase_grid#
     # camera_matrix = torch.tensor(camera_config['camera_matrix'])
     # translation_marix = torch.tensor(camera_config['translation_matrix'])
     # dist_coeffs = torch.tensor(camera_config['dist_coeffs'])
 
-    # # store all distortion coeffecients in seperate variables
+    # # # store all distortion coeffecients in seperate variables
     # k_1, k_2, p_1, p_2, k_3 = dist_coeffs
 
-    # first: rotate pixel coordinates in camera frame into image frame
+    # # first: rotate pixel coordinates in camera frame into image frame
     # coords_in_image = translation_marix @ coords_in_camera
     
-    # # second: consider distortion
+    # # # second: consider distortion
     # coords_dist = torch.ones_like((coords_in_image.mT))
     # for i, coords in enumerate(coords_in_image.mT):
     #     x_ = coords[0] / coords[2]
@@ -172,158 +157,32 @@ def project_coords_to_image(patch_size, image_size, camera_config, T_attacker_in
     #     coords_dist[i][0] = x_d
     #     coords_dist[i][1] = y_d
 
-    #print("--coords_in_image shape:")
-    # print(T_patch_in_attacker, T_patch_in_attacker.shape)
-    # print(T_attacker_in_camera, T_attacker_in_camera.shape)
-    # # print(translation_marix, translation_marix.shape)
-    # full_trans_m = camera_matrix @ translation_marix @ T_attacker_in_camera @ T_patch_in_attacker
-    # print(full_trans_m, full_trans_m.shape)
-    # inv_camera_matrix = torch.pinverse(full_trans_m).mT.unsqueeze(0)
-    # print(inv_camera_matrix, inv_camera_matrix.shape)
-    # # print(full_trans_m, full_trans_m.shape)
-    # # print(camera_matrix, camera_matrix.shape)
-    # #inv_camera_matrix = torch.inverse(camera_matrix)[:2].unsqueeze(0)  # inverse and only keep first 2 rows
-    # #print(inv_camera_matrix, inv_camera_matrix.shape)
-    # affine_grid = torch.nn.functional.affine_grid(inv_camera_matrix, (1, 1, 1, h, w), align_corners=False)
-    # #print(affine_grid)
-    # #print(affine_grid.shape)
-
-    # x_grid = affine_grid[..., 0] / affine_grid[..., 2]
-    # y_grid = affine_grid[..., 1] / affine_grid[..., 2]
-
-    # affine_grid = torch.stack([x_grid, y_grid]).permute(1, 2, 3, 4, 0)
-    # print(affine_grid, affine_grid.shape)
-
-    # at last, transform into image pixel coordinates
-    # u, v, z = camera_matrix @ coords_dist.mT
-    # u and v need to be devided by z
+    # # at last, transform into image pixel coordinates
+    # u, v, z = camera_matrix.mT @ coords_dist.mT
+    # # u and v need to be devided by z
     # img_x = u/z
     # img_y = v/z
-    # # simoultaneously round both arrays
-    # #img_x = torch.round(u/z, decimals=0)
-    # #img_y = torch.round(v/z, decimals=0)
-    # # reshaping and stacking to get valid grid
-    # img_x = torch.reshape(img_x, (oh, ow))
-    # img_y = torch.reshape(img_y, (oh, ow))
-
-    # #img_x = 2* ((img_x - img_x.min()) / (img_x.max() - img_x.min())) -1
-    # #img_y = 2* ((img_y - img_y.min()) / (img_y.max() - img_y.min())) -1
-
-    # grid = torch.stack([img_y, img_x]).mT.reshape((1, 1, oh, ow, 2))
-    # print(grid.min(), grid.max())
-    #grid = 2* ((grid - 0) / (160 - 0)) -1
-    #grid = torch.nn.functional.interpolate(grid, size=(oh, ow, 2)).squeeze(0)
-
-
-    # print("--values in grid--")
-    # print(grid[0][0][0][0])
-    # print(grid.min(), grid.max())
-    #print("patch size: ", patch_size)
-    #patch = torch.ones(*patch_size)
-    #patch_transformed = grid_sample(patch, grid.squeeze(0), align_corners=True, mode='bilinear', padding_mode='zeros')
-    #print(patch_transformed.shape)
-    #plt.imshow(patch_transformed.detach().numpy()[0][0])
-    #plt.show()
-    # print("--image from interpolated grid---")
-    #grid_upsampled = torch.nn.functional.interpolate(grid, size=(oh, ow, 2)).squeeze(0)
-    #grid_normalized = 2* ((grid - grid.min()) / (grid.max() - grid.min())) -1
-
-    #print(grid_normalized.min(), grid_normalized.max())
-    # patch = torch.ones(1, 1, h, w)
-    # patch_interpolated = torch.nn.functional.interpolate(patch, size=(oh, ow))
-    # #print(patch_interpolated.shape)
-    # #plt.imshow(patch_interpolated[0][0].detach().numpy())
-    # #plt.show()
-
-    #int_affine_grid = torch.nn.functional.interpolate(affine_grid, size=(96, 160, 2)).squeeze(0)
-    #print(int_affine_grid.shape)
-    # transformed_patch_3 = grid_sample(patch, grid, align_corners=False)
-    # print(transformed_patch_3.shape)
-    # plt.imshow(transformed_patch_3[0][0].detach().numpy())
-    # plt.show()
-
-    # lin_homg_ind_2 = torch.stack((indy, indx, torch.ones_like(indx)))
-    # u, v, z = camera_matrix @ lin_homg_ind_2
-    # img_x = u/z 
-    # img_y = v/z
-    # my_affine_grid = torch.stack([img_y, img_x]).mT.reshape((1, 1, h, w, 2))
-    #print(my_affine_grid, my_affine_grid.shape)
-
-    
-    # grid_upsampled = grid_upsampled.squeeze(0).permute(2, 0, 1)
-    # grid_x, grid_y = grid_upsampled.int()
-    # print(grid_x.shape, grid_y.shape)
-    # print("--from interpolated grid --")
-    # transformed_patch = torch.zeros(oh, ow)
-    # for x in range(oh):
-    #     for y in range(ow):
-    #         #print(x, y)
-    #         if grid_x[x][y] >= 0. and grid_y[x][y] >= 0.:
-    #             if grid_x[x][y] < oh and grid_y[x][y] < ow:
-    #                 #print(grid_x[x][y], grid_y[x,y])
-    #                 transformed_patch[grid_x[x][y]][grid_y[x][y]] = patch_interpolated.squeeze(0).squeeze(0)[x][y]
-    # plt.imshow(transformed_patch)
-    # plt.show()
-
-
-    # reshaping for easier use with following for loops
-    # print("--numpy image--")
-    # # img_x = img_x.reshape(h, w).int()
-    # # img_y = img_y.reshape(h, w).int()
-    # img_x = x_grid.reshape(h, w).int()
-    # img_y = y_grid.reshape(h, w).int()
-    # #print("--values in img_x + img_y")
-    # #print(img_x[0][0])
-    # #print(img_y[0][0])
-    # patch_2 = torch.ones(h, w)
-    # transformed_patch_2 = torch.zeros(oh, ow)
-    # for x in range(img_x.shape[0]):
-    #     for y in range(img_y.shape[1]):
-    #         # only replace pixels that are actually visible in the image
-    #         # this means we only replace pixels starting from the upper left corner (0,0)
-    #         # until the lower right corner (height, width) of the original image
-    #         # any pixels outside of the original image are ignored
-    #         if img_x[x][y] >= 0. and img_x[x][y] >= 0.:
-    #             if img_x[x][y] < oh and img_y[x][y] < ow:
-    #                 transformed_patch_2[img_x[x][y]][img_y[x][y]] = patch_2[x][y]
-
-    # plt.imshow(transformed_patch_2)
-    # plt.show()
-
-
-    # initialize a blank patch, (b, c, h, w)
-    patch = torch.ones(1, 1, h, w)
 
     # 1x3x4 camera intrinsics from DLT calibration, 
     # using it for debugging affine grid and grid sample
-    camera_intrinsics = torch.tensor([[[  26.33732709,  -25.19487877, -114.26821427,   33.71230283],
-                                          [  11.99457808,    4.20581382, -181.29537939,   57.02665397],
-                                          [   0.38332883,   -0.00340662,   -3.07207869,    1.        ]]])
+    # camera_matrix = torch.tensor([[[  26.33732709,  -25.19487877, -114.26821427,   33.71230283],
+    #                                     [  11.99457808,    4.20581382, -181.29537939,   57.02665397],
+    #                                     [   0.38332883,   -0.00340662,   -3.07207869,    1.        ]]])
 
-    rot_matrix = T_attacker_in_camera @ T_patch_in_attacker
-    print("rot matrix")
-    print(rot_matrix, rot_matrix.shape)
+    #T_patch_in_camera = T_attacker_in_camera @ T_patch_in_attacker
 
-    print("transformation matrix")
-    transformation_matrix = camera_intrinsics @ rot_matrix
-    print(transformation_matrix.shape)
+    transformation_matrix = camera_matrix @ T_patch_in_camera @ T_base_grid
+
+    coords = transformation_matrix @ base_grid
+    print(coords, coords.shape)
     
-    print("inv matrix")
-    inv_matrix = torch.pinverse(transformation_matrix).mT
-    print(inv_matrix, inv_matrix.shape)
+    
+    affine_grid = torch.stack([img_y, img_x]).mT
+    affine_grid = affine_grid.reshape((1, oh, ow, 2))
 
-    affine_grid = torch.nn.functional.affine_grid(inv_matrix, size=(1, 1, 1, oh, ow), align_corners=False)
+    print(affine_grid.shape)
 
-    transformed_patch = torch.nn.functional.grid_sample(patch.unsqueeze(0), affine_grid, align_corners=False)
-    plt.imshow(transformed_patch[0][0][0].detach().numpy())
-    plt.show()
-
-    # print("--end of projection--")
-    # print(grid.shape)
-    # #print(grid[0])
-    # print("---upsampled---")
-    # print(grid_upsampled.shape)
-    return grid_upsampled.squeeze(1)
+    return affine_grid
     
 def get_bit_mask(patch_size, image_size, grid):
     """"
@@ -424,7 +283,7 @@ def get_transformed_patch(grid, patch, image_size):
     return transformed_patch
     
 
-def place_patch(image, patch, attacker_pose, camera_config):
+def place_patch(image, patch, angle, scale, tx, ty):
     """"
     Place all pixel values of the patch at the correct calculated position in the original image.
     Parameters:
@@ -439,26 +298,53 @@ def place_patch(image, patch, attacker_pose, camera_config):
     patch_size = [*patch.shape]
     image_size = [*image.shape]
 
-    T_patch_in_attacker = calc_T_in_attaker_frame(patch_size=patch_size[2:])
+    mask = torch.ones_like(patch)
+
+    # T_patch_in_attacker = calc_T_in_attaker_frame(patch_size=patch_size[2:])
     
-    T_attacker_in_camera = calc_T_attacker_in_camera(attacker_pose[:3], attacker_pose[3:])
+    # T_attacker_in_camera = calc_T_attacker_in_camera(attacker_pose[:3], attacker_pose[3:])
 
-    coords_grid = project_coords_to_image(patch_size=patch_size, image_size=image_size, camera_config=camera_config, 
-                   T_attacker_in_camera=T_attacker_in_camera, T_patch_in_attacker=T_patch_in_attacker)
+    # coords_grid = affine_grid(patch_size=patch_size, image_size=image_size, camera_config=camera_config, 
+    #                T_attacker_in_camera=T_attacker_in_camera, T_patch_in_attacker=T_patch_in_attacker)
 
+    # create a 3x3 rotation and translation matrix
+    rotation_matrix = torch.zeros(1, 3, 3)
+    
+    cos = torch.cos(angle) # angle in radians
+    sin = torch.sin(angle)
 
-    transformed_patch = grid_sample(patch, coords_grid)
+    rotation_matrix[:, 0, 0] = cos
+    rotation_matrix[:, 0, 1] = -sin
+    rotation_matrix[:, 1, 0] = sin
+    rotation_matrix[:, 1, 1] = cos
+    rotation_matrix[:, 0, 2] = tx
+    rotation_matrix[:, 1, 2] = ty
+    rotation_matrix[:, 2, 2] = 1
 
-    #bit_mask = get_bit_mask(patch_size, image_size, coords_grid)
-    #transformed_patch = get_transformed_patch(coords_grid, patch, image_size)
-    #plt.imshow(transformed_patch.detach().numpy()[0][0], cmap='gray')
-    #plt.imshow(bit_mask[0][0].detach().numpy())
-    #plt.colorbar()
-    # image *= bit_mask
-    #plt.imshow(image[0][0].detach().numpy())
-    #image += transformed_patch
+    # create a 3x3 scaling matrix
+    scaling = torch.zeros(1, 3, 3)
 
-    return image
+    scaling[:, 0, 0] = scale
+    scaling[:, 1, 1] = scale
+    scaling[:, 2, 2] = 1
+
+    # calculate full transformation matrix
+    transformation_matrix = rotation_matrix @ scaling
+
+    # PyTorch's affine grid funtion needs the inverse of the 3x3 transformation matrix
+    inv_t_matrix = torch.inverse(transformation_matrix)[:, :2] # affine grid expects only the first 2 rows, the last row (0, 0, 1) is neglected
+    affine_grid = torch.nn.functional.affine_grid(inv_t_matrix, size=(1, 1, 96, 160), align_corners=False)
+
+    # calculate both the bit mask and the transformed patch
+    bit_mask = grid_sample(mask, affine_grid).bool()
+    transformed_patch = grid_sample(patch, affine_grid)
+
+    # first erase all pixel values in the original image in the area of the patch
+    modified_image = image * ~bit_mask
+    # and now replace these values with the transformed patch
+    modified_image += transformed_patch
+
+    return modified_image
 
 if __name__=="__main__":
     # ---Example for patch placement---
@@ -480,9 +366,9 @@ if __name__=="__main__":
     pose = pose[:3]
 
     # load the camera parameters from the config yaml file
-    import yaml
-    with open('adversarial_frontnet/camera_calibration/camera_config.yaml', 'r') as file:
-        config = yaml.safe_load(file)
+    # import yaml
+    # with open('adversarial_frontnet/camera_calibration/camera_config.yaml', 'r') as file:
+    #     config = yaml.safe_load(file)
 
     # and convert to numpy arrays
     # camera_matrix = torch.tensor(config['camera_matrix'])
@@ -499,12 +385,20 @@ if __name__=="__main__":
     # pose includes x,y,z and quaternions in order qx, qy, qz, qw
     # x,y,z will be the center of the patch in camera frame
     # quaternions hold rotation information from attacker (holding the patch) to camera frame
-    pose = torch.tensor([2.7143893241882324,1.6456797122955322,0.4578791558742523, 
-                         0.0114797880217894, 0.0744068142306854, -0.1520472288581698, 0.985501639095322]).requires_grad_()
+    # pose = torch.tensor([2.7143893241882324,1.6456797122955322,0.4578791558742523, 
+    #                      0.0114797880217894, 0.0744068142306854, -0.1520472288581698, 0.985501639095322]).requires_grad_()
 
+    # calculate random translation, rotation (in radians), and scale factor
+    tx = torch.randint(high=2, size=(1,)).float().requires_grad_()
+    ty = torch.randint(high=2, size=(1,)).float().requires_grad_()
+    rotation = torch.distributions.uniform.Uniform(np.radians(-45), np.radians(45)).sample().requires_grad_()  # PyTorch doesn't offer a radians function yet
+    scale = torch.distributions.uniform.Uniform(0.01, 1).sample().requires_grad_()
+    
     # place the patch
-    new_image = place_patch(image, patch, pose, config)
+    new_image = place_patch(image, patch, angle=rotation, scale=scale, tx=tx, ty=ty)
+    print(new_image.shape)
+    # check if image still keeps the gradient
+    print(new_image.requires_grad)
     # plot the final image
-    # import matplotlib.pyplot as plt
-    #plt.imshow(new_image[0][0].detach().numpy())
+    plt.imshow(new_image[0][0].detach().numpy())
     plt.show()
