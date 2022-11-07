@@ -4,8 +4,6 @@ import torch
 from torch.nn.functional import grid_sample
 
 
-import matplotlib.pyplot as plt
-
 def to_rotation_matrix(q, require_unit=True):
     # copy of rowan's to_matrix() function and adapting it for torch
     # source: https://github.com/glotzerlab/rowan/blob/1b64ac7399e86459ee95e8499b11919b83a30305/rowan/functions.py#L952
@@ -348,6 +346,7 @@ def place_patch(image, patch, angle, scale, tx, ty):
 
 if __name__=="__main__":
     # ---Example for patch placement---
+    import matplotlib.pyplot as plt
     # load the Frontnet dataset
     from util import load_dataset
     dataset_path = 'pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle'
