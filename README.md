@@ -90,3 +90,51 @@ We investigated two ways to ways to calibrate the camera:
 We have calculated the l2 distance between the manually set points stored in the csv file and the calculated pixel coordinates utilizing both methods. The mean l2 distance of the calculated pixel coordinates utilizing OpenCV was smaller. We therefore adapted the OpenCV functions for our code.
 
 You can follow the main method in `adversarial_frontnet/camera_calibration/camera_calibration.py` to calculate the camera intrinsics, rotation and translation matrix and the distortion coefficients needed for projecting pixels. Additionally, you can load these values from the yaml file, provided in the same folder.
+
+## Hardware
+### Generate C code and flashable image of quantized Frontnet
+For creating a flashable image, we first need a `.onnx` file of the quantized networks. We use [nemo](https://github.com/pulp-platform/nemo) to receive the `.onnx` file.\
+Nemo only works on older versions of PyTorch. We therefore create a new Python Virtual Environment for this process.
+```bash
+deactivate  # deactive your current virtual environment
+python3 -m venv /path/to/nemo-env
+source /path/to/nemo-env/bin/activate
+python -m pip install torch==1.4.0 torchvision==0.5.0 pytorch-nemo==0.0.7 pandas==1.2.4 torchsummary==1.5.1 matplotlib==3.4.1
+```
+
+After installing nemo, please change directories back to the root directory of this repository.
+
+You can now call the script, that the Frontnet authors provided for generating the `.onnx` file:
+```bash
+python pulp-frontnet/PyTorch/Scripts/QExport.py '160x32' --load-model 'pulp-frontnet/PyTorch/Models/Frontnet160x32.Q.pt' --load-trainset 'pulp-frontnet/PyTorch/Data/160x96OthersTrainsetAug.pickle' --regime pulp-frontnet/PyTorch/Scripts/regime.json
+```
+
+This will create a new folder `Results/160x32/Export` in which the `Frontnet.onnx` is saved.
+
+We use DORY to generate a flashable image from the `.onnx` file.
+```bash
+# clone the repository
+git clone https://github.com/pulp-platform/dory
+cd dory
+# we tested dory on this commit
+git checkout 06b1b91fe1aa77f87b3baae97ee8dcb03eef1785
+# get submodules
+git submodule sync
+git submodule update --init --recursive
+# install DORY as pip pickage into your current python environment
+python -m pip install -e .
+```
+
+Now generate the image with the provided script:
+```bash
+python network_generate.py NEMO GAP8.GAP8_gvsoc /path/to/adversarial_frontnet/misc/dory_config.json --app_dir /path/to/adversarial_frontnet/hardware/frontnet_code/
+```
+
+Lastly, to generate the C code and flashable image:
+```bash
+cd /path/to/adversarial_frontnet/hardware/frontnet_code/
+make clean all run CORE=8 platform=gvsoc
+```
+TODO: make is not working currently!
+
+
