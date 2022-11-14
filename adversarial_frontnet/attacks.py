@@ -31,19 +31,22 @@ class Patch(torch.nn.Module):
         return batch_min, batch_max
 
 class TargetedAttack():
-    def __init__(self, model, dataset, target=[True, False, False, False], learning_rate = 3e-5, path='eval/targeted/'):
+    def __init__(self, model, dataset, learning_rate = 3e-5, path='eval/targeted/'):
         self.model = model
         self.dataset = dataset
         
         self.path = path
 
-        # define the maximum and minimum targets to optimize towards
-        self.target = torch.tensor(target)
+        self.x_target = torch.tensor([True, False, False, False])
+        self.y_target = torch.tensor([False, True, False, False])
+        self.z_target = torch.tensor([False, False, True, False])
 
         # init random patch
         self.x_patch = Patch()
+        self.y_patch = Patch()
+        self.z_patch = Patch()
 
-        self.optimizer = torch.optim.Adam(self.x_patch.parameters(), lr = learning_rate)
+        self.optimizer = torch.optim.Adam([*self.x_patch.parameters(), *self.y_patch.parameters()], lr = learning_rate)
 
     def optimize(self, epochs=100000):
         try:
@@ -52,24 +55,63 @@ class TargetedAttack():
                 for _ in range(len(self.dataset)):
                     image_batch, pose_batch = next(iter(self.dataset))
                     # place patch with current parameters in input image
-                    input_images_min, input_images_max = self.x_patch.batch_place(image_batch)
+                    input_images_x_min, input_images_x_max = self.x_patch.batch_place(image_batch)
+                    input_images_y_min, input_images_y_max = self.y_patch.batch_place(image_batch)
+                    # input_images_z_min, input_images_z_max = self.y_patch.batch_place(image_batch)
 
-                    targets_min = pose_batch * ~self.target
-                    targets_max = pose_batch * self.target + (4*self.target.int())
+                    target_x_min = pose_batch * ~self.x_target + (1*self.x_target.int())
+                    target_x_max = pose_batch * self.x_target + (3.6*self.x_target.int())
+
+                    target_y_min = pose_batch * ~self.y_target + (-2*self.y_target.int())
+                    target_y_max = pose_batch * self.y_target + (2*self.y_target.int())
+
+                    # target_z_min = pose_batch * ~self.z_target + (-0.5*self.z_target.int())
+                    # target_z_max = pose_batch * self.z_target + (0.5*self.z_target.int())
+
 
                     # get prediction of current pose from NN
-                    pred_attack_min = torch.stack(self.model(input_images_min))
-                    pred_attack_min = pred_attack_min.view(dataset.batch_size, -1)  # get prediction into appropriate shape
+                    pred_x_attack_min = torch.stack(self.model(input_images_x_min))
+                    pred_x_attack_min = pred_x_attack_min.view(dataset.batch_size, -1)  # get prediction into appropriate shape
                     
-                    pred_attack_max = torch.stack(self.model(input_images_max))
-                    pred_attack_max = pred_attack_max.view(dataset.batch_size, -1)  # get prediction into appropriate shape
+                    pred_x_attack_max = torch.stack(self.model(input_images_x_max))
+                    pred_x_attack_max = pred_x_attack_max.view(dataset.batch_size, -1)  # get prediction into appropriate shape
 
                     # calculate loss between target pose and predicted pose
-                    loss_min = torch.dist(targets_min, pred_attack_min, p=2)
-                    loss_max = torch.dist(targets_max, pred_attack_max, p=2)
+                    loss_min = torch.dist(target_x_min, pred_x_attack_min, p=2)
+                    loss_max = torch.dist(target_x_max, pred_x_attack_max, p=2)
 
                     # average loss between the two loss terms
-                    loss = (loss_min + loss_max) / 2.
+                    loss_x = (loss_min + loss_max) / 2.
+
+                    pred_y_attack_min = torch.stack(self.model(input_images_y_min))
+                    pred_y_attack_min = pred_y_attack_min.view(dataset.batch_size, -1)  # get prediction into appropriate shape
+                    
+                    pred_y_attack_max = torch.stack(self.model(input_images_y_max))
+                    pred_y_attack_max = pred_y_attack_max.view(dataset.batch_size, -1)  # get prediction into appropriate shape
+
+                    # calculate loss between target pose and predicted pose
+                    loss_min = torch.dist(target_y_min, pred_y_attack_min, p=2)
+                    loss_max = torch.dist(target_y_max, pred_y_attack_max, p=2)
+
+                    # average loss between the two loss terms
+                    loss_y = (loss_min + loss_max) / 2.
+
+                    # pred_z_attack_min = torch.stack(self.model(input_images_z_min))
+                    # pred_z_attack_min = pred_z_attack_min.view(dataset.batch_size, -1)  # get prediction into appropriate shape
+                    
+                    # pred_z_attack_max = torch.stack(self.model(input_images_z_max))
+                    # pred_z_attack_max = pred_z_attack_max.view(dataset.batch_size, -1)  # get prediction into appropriate shape
+
+                    # # calculate loss between target pose and predicted pose
+                    # loss_min = torch.dist(target_z_min, pred_z_attack_min, p=2)
+                    # loss_max = torch.dist(target_z_max, pred_z_attack_max, p=2)
+
+                    # # average loss between the two loss terms
+                    # loss_z = (loss_min + loss_max) / 2.
+
+
+                    loss = torch.stack((loss_x, loss_y))
+                    loss = torch.min(loss)
 
                     # save loss for evaluation
                     losses.append(loss.detach().numpy())
@@ -81,83 +123,31 @@ class TargetedAttack():
 
                     # restrict patch pixel values to stay between 0 and 255
                     self.x_patch.patch.data.clamp_(0., 255.)
+                    self.y_patch.patch.data.clamp_(0., 255.)
+                    # self.z_patch.patch.data.clamp_(0., 255.)
 
                 # occasional print for observering training process
                 if i % 1 == 0:
                     print("step %d, loss %.6f"  % (i, loss))
-
+                    print("Patch x")
                     print("Min: ", self.x_patch.transformation_min.detach().numpy())
                     print("Max: ", self.x_patch.transformation_max.detach().numpy())
+                    print("Patch y")
+                    print("Min: ", self.y_patch.transformation_min.detach().numpy())
+                    print("Max: ", self.y_patch.transformation_max.detach().numpy())
             
         except KeyboardInterrupt:                   # training process can be interrupted anytime
             print("Aborting optimization...")    
 
         print("Bing!")
         print("Last loss: ", loss.detach().numpy())
-        print("Last prediciton: ", pred_attack_min, pred_attack_max)
+        print("Last prediciton x: ", pred_x_attack_min, pred_x_attack_max)
+        print("Last prediciton y: ", pred_y_attack_min, pred_y_attack_max)
+        # print("Last prediciton z: ", pred_z_attack_min, pred_z_attack_max)
 
         np.save(self.path+'losses_test', losses)
 
         return self.x_patch
-
-def targeted_attack(image, target, model, path="eval/targeted/"):
-    # initialize optimizer
-    x_patch = Patch()
-    opt = torch.optim.Adam(x_patch.parameters(), lr=3e-5)
-    prediction = torch.concat(model(image)).squeeze(1)
-    
-    new_image_min = place_patch(image, x_patch.patch, x_patch.transformation_min)
-    new_image_max = place_patch(image, x_patch.patch, x_patch.transformation_max)
-    
-    pred_attack_min = torch.concat(model(new_image_min)).squeeze(1)
-    pred_attack_max = torch.concat(model(new_image_max)).squeeze(1)
-    loss_min = torch.dist(prediction, pred_attack_min, p=2)
-    loss_max = torch.dist(prediction, pred_attack_max, p=2)
-
-    loss = (loss_min + loss_max) / 2.
-
-    losses = []
-    losses.append(loss.detach().numpy())
-
-    target_min = torch.tensor([0., *prediction[1:]])
-    target_max = torch.tensor([4., *prediction[1:]])
-
-    i = 0.
-    try:
-        while loss > 0.01:
-            i += 1
-            # prediction = torch.concat(model(new_image)).squeeze(1)
-            # loss = torch.dist(prediction, target, p=2)
-            pred_attack_min = torch.concat(model(new_image_min)).squeeze(1)
-            pred_attack_max = torch.concat(model(new_image_max)).squeeze(1)
-            loss_min = torch.dist(pred_attack_min, target_min, p=2)
-            loss_max = torch.dist(pred_attack_max, target_max, p=2)
-
-            loss = (loss_min + loss_max) / 2.
-            losses.append(loss.detach().numpy())
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-
-            x_patch.patch.data.clamp_(0., 255.)
-            # new_image = place_patch(image, x_patch.patch, x_patch.transformation_min)
-            new_image_min = place_patch(image, x_patch.patch, x_patch.transformation_min)
-            new_image_max = place_patch(image, x_patch.patch, x_patch.transformation_max)
-    
-            if i % 100 == 0:
-                print("step %d, loss %.6f" % (i, loss))
-                print("transformation matrix min: ", x_patch.transformation_min.detach().numpy())
-                print("transformation matrix max: ", x_patch.transformation_max.detach().numpy())
-    except KeyboardInterrupt:
-        print("Aborting optimization...")    
-
-    print("Bing!")
-    print("Last loss: ", loss.detach().numpy())
-    print("Last prediciton: ", pred_attack_min, pred_attack_max)
-
-    np.save(path+'losses_test', losses)
-
-    return x_patch.patch, x_patch.transformation_min
 
 
 def untargeted_attack(image, patch, model, transformation_matrix, path='eval/untargeted/'): # angle, scale, tx, ty,
