@@ -169,18 +169,18 @@ def affine_grid(patch_size, image_size, camera_config, T_attacker_in_camera, T_p
 
     #T_patch_in_camera = T_attacker_in_camera @ T_patch_in_attacker
 
-    transformation_matrix = camera_matrix @ T_patch_in_camera @ T_base_grid
+    # transformation_matrix = camera_matrix @ T_patch_in_camera @ T_base_grid
 
-    coords = transformation_matrix @ base_grid
-    print(coords, coords.shape)
+    # coords = transformation_matrix @ base_grid
+    # print(coords, coords.shape)
     
     
-    affine_grid = torch.stack([img_y, img_x]).mT
-    affine_grid = affine_grid.reshape((1, oh, ow, 2))
+    # affine_grid = torch.stack([img_y, img_x]).mT
+    # affine_grid = affine_grid.reshape((1, oh, ow, 2))
 
-    print(affine_grid.shape)
+    # print(affine_grid.shape)
 
-    return affine_grid
+    #return affine_grid
     
 def get_bit_mask(patch_size, image_size, grid):
     """"
@@ -281,7 +281,7 @@ def get_transformed_patch(grid, patch, image_size):
     return transformed_patch
     
 
-def place_patch(image, patch, angle, scale, tx, ty):
+def place_patch(image, patch, transformation_matrix):
     """"
     Place all pixel values of the patch at the correct calculated position in the original image.
     Parameters:
@@ -306,30 +306,34 @@ def place_patch(image, patch, angle, scale, tx, ty):
     #                T_attacker_in_camera=T_attacker_in_camera, T_patch_in_attacker=T_patch_in_attacker)
 
     # create a 3x3 rotation and translation matrix
-    rotation_matrix = torch.zeros(1, 3, 3)
+    # rotation_matrix = torch.zeros(1, 3, 3)#.requires_grad_(True)
     
-    cos = torch.cos(angle) # angle in radians
-    sin = torch.sin(angle)
+    # cos = torch.cos(angle) # angle in radians
+    # sin = torch.sin(angle)
 
-    rotation_matrix[:, 0, 0] = cos
-    rotation_matrix[:, 0, 1] = -sin
-    rotation_matrix[:, 1, 0] = sin
-    rotation_matrix[:, 1, 1] = cos
-    rotation_matrix[:, 0, 2] = tx
-    rotation_matrix[:, 1, 2] = ty
-    rotation_matrix[:, 2, 2] = 1
+    # rotation_matrix[:, 0, 0] += cos
+    # rotation_matrix[:, 0, 1] += -sin
+    # rotation_matrix[:, 1, 0] += sin
+    # rotation_matrix[:, 1, 1] += cos
+    # rotation_matrix[:, 0, 2] += tx
+    # rotation_matrix[:, 1, 2] += ty
+    # rotation_matrix[:, 2, 2] += 1
 
-    # create a 3x3 scaling matrix
-    scaling = torch.zeros(1, 3, 3)
+    # # create a 3x3 scaling matrix
+    # scaling = torch.zeros(1, 3, 3)
 
-    scaling[:, 0, 0] = scale
-    scaling[:, 1, 1] = scale
-    scaling[:, 2, 2] = 1
+    # scaling[:, 0, 0] = scale
+    # scaling[:, 1, 1] = scale
+    # scaling[:, 2, 2] = 1
+
+    #transformation_matrix = torch.rand(1, 3, 2).requires_grad_(True)
 
     # calculate full transformation matrix
-    transformation_matrix = rotation_matrix @ scaling
+    # transformation_matrix = rotation_matrix @ scaling
+    # print(transformation_matrix.shape)
 
     # PyTorch's affine grid funtion needs the inverse of the 3x3 transformation matrix
+    transformation_matrix = torch.cat((transformation_matrix, torch.tensor([[[0, 0, 1]]])), dim=1)
     inv_t_matrix = torch.inverse(transformation_matrix)[:, :2] # affine grid expects only the first 2 rows, the last row (0, 0, 1) is neglected
     affine_grid = torch.nn.functional.affine_grid(inv_t_matrix, size=(1, 1, 96, 160), align_corners=False)
 

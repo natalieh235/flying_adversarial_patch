@@ -10,14 +10,14 @@ from patch_placement import place_patch
 class Patch(torch.nn.Module):
     def __init__(self, patch_size=[1, 50, 50]):
         super(Patch, self).__init__()
-        self.patch = (torch.rand(1, *patch_size) * 255.)#.requires_grad_()
-        #self.patch = torch.nn.Parameter(patch)
+        patch = (torch.rand(1, *patch_size) * 255.)#.requires_grad_()
+        self.patch = torch.nn.Parameter(patch)
 
-        transformation_min = torch.tensor([[[*torch.rand(3,)],[*torch.rand(3,)] , [0, 0, 1]]])
-        transformation_max = torch.tensor([[[*torch.rand(3,)],[*torch.rand(3,)] , [0, 0, 1]]])
+        transformation_min = torch.tensor([[[*torch.rand(3,)],[*torch.rand(3,)]]])
+        transformation_max = torch.tensor([[[*torch.rand(3,)],[*torch.rand(3,)]]])
 
         self.transformation_min = torch.nn.Parameter(transformation_min)
-        #self.transformation_max = torch.nn.Parameter(transformation_max)
+        self.transformation_max = torch.nn.Parameter(transformation_max)
 
     def place(self, image):
         image_min = place_patch(image, self.patch, self.transformation_min)
@@ -103,7 +103,7 @@ class TargetedAttack():
 def targeted_attack(image, target, model, path="eval/targeted/"):
     # initialize optimizer
     x_patch = Patch()
-    opt = torch.optim.Adam(x_patch.parameters(), lr=1e-4)
+    opt = torch.optim.Adam(x_patch.parameters(), lr=3e-5)
     prediction = torch.concat(model(image)).squeeze(1)
     
     new_image = place_patch(image, x_patch.patch, x_patch.transformation_min)
