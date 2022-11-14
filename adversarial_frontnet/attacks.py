@@ -57,7 +57,7 @@ class TargetedAttack():
                     # place patch with current parameters in input image
                     input_images_x_min, input_images_x_max = self.x_patch.batch_place(image_batch)
                     input_images_y_min, input_images_y_max = self.y_patch.batch_place(image_batch)
-                    # input_images_z_min, input_images_z_max = self.y_patch.batch_place(image_batch)
+                    input_images_z_min, input_images_z_max = self.y_patch.batch_place(image_batch)
 
                     target_x_min = pose_batch * ~self.x_target + (1*self.x_target.int())
                     target_x_max = pose_batch * self.x_target + (3.6*self.x_target.int())
@@ -65,8 +65,8 @@ class TargetedAttack():
                     target_y_min = pose_batch * ~self.y_target + (-2*self.y_target.int())
                     target_y_max = pose_batch * self.y_target + (2*self.y_target.int())
 
-                    # target_z_min = pose_batch * ~self.z_target + (-0.5*self.z_target.int())
-                    # target_z_max = pose_batch * self.z_target + (0.5*self.z_target.int())
+                    target_z_min = pose_batch * ~self.z_target + (-0.5*self.z_target.int())
+                    target_z_max = pose_batch * self.z_target + (0.5*self.z_target.int())
 
 
                     # get prediction of current pose from NN
@@ -96,21 +96,21 @@ class TargetedAttack():
                     # average loss between the two loss terms
                     loss_y = (loss_min + loss_max) / 2.
 
-                    # pred_z_attack_min = torch.stack(self.model(input_images_z_min))
-                    # pred_z_attack_min = pred_z_attack_min.view(dataset.batch_size, -1)  # get prediction into appropriate shape
+                    pred_z_attack_min = torch.stack(self.model(input_images_z_min))
+                    pred_z_attack_min = pred_z_attack_min.view(dataset.batch_size, -1)  # get prediction into appropriate shape
                     
-                    # pred_z_attack_max = torch.stack(self.model(input_images_z_max))
-                    # pred_z_attack_max = pred_z_attack_max.view(dataset.batch_size, -1)  # get prediction into appropriate shape
+                    pred_z_attack_max = torch.stack(self.model(input_images_z_max))
+                    pred_z_attack_max = pred_z_attack_max.view(dataset.batch_size, -1)  # get prediction into appropriate shape
 
-                    # # calculate loss between target pose and predicted pose
-                    # loss_min = torch.dist(target_z_min, pred_z_attack_min, p=2)
-                    # loss_max = torch.dist(target_z_max, pred_z_attack_max, p=2)
+                    # calculate loss between target pose and predicted pose
+                    loss_min = torch.dist(target_z_min, pred_z_attack_min, p=2)
+                    loss_max = torch.dist(target_z_max, pred_z_attack_max, p=2)
 
-                    # # average loss between the two loss terms
-                    # loss_z = (loss_min + loss_max) / 2.
+                    # average loss between the two loss terms
+                    loss_z = (loss_min + loss_max) / 2.
 
 
-                    loss = torch.stack((loss_x, loss_y))
+                    loss = torch.stack((loss_x, loss_y, loss_z))
                     loss = torch.min(loss)
 
                     # save loss for evaluation
@@ -124,7 +124,7 @@ class TargetedAttack():
                     # restrict patch pixel values to stay between 0 and 255
                     self.x_patch.patch.data.clamp_(0., 255.)
                     self.y_patch.patch.data.clamp_(0., 255.)
-                    # self.z_patch.patch.data.clamp_(0., 255.)
+                    self.z_patch.patch.data.clamp_(0., 255.)
 
                 # occasional print for observering training process
                 if i % 1 == 0:
@@ -135,7 +135,9 @@ class TargetedAttack():
                     print("Patch y")
                     print("Min: ", self.y_patch.transformation_min.detach().numpy())
                     print("Max: ", self.y_patch.transformation_max.detach().numpy())
-            
+                    print("Patch z")
+                    print("Min: ", self.z_patch.transformation_min.detach().numpy())
+                    print("Max: ", self.z_patch.transformation_max.detach().numpy())
         except KeyboardInterrupt:                   # training process can be interrupted anytime
             print("Aborting optimization...")    
 
