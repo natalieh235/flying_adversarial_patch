@@ -32,7 +32,6 @@ class Patch(torch.nn.Module):
         return torch.stack([image_min, image_max])
 
     def batch_place(self, batch):
-        #TODO implement lambda for placing patch in multiple images
         out = torch.stack([self.place(img) for img in batch]).view((2, *batch.shape))
         batch_min, batch_max = out
 
@@ -111,12 +110,13 @@ class TargetedAttack():
         return self.x_patch
 
 
-def untargeted_attack(image, patch, model, angle, scale, tx, ty, path='eval/untargeted/'):
+def untargeted_attack(image, patch, model, transformation_matrix, path='eval/untargeted/'): # angle, scale, tx, ty,
     # initialize optimizer
-    opt = torch.optim.Adam([patch, angle, scale, tx, ty], lr=1e-3)
+    opt = torch.optim.Adam([transformation_matrix], lr=1e-4)
     prediction = torch.concat(model(image)).squeeze(1)
     
-    new_image = place_patch(image, patch, angle=angle, scale=scale, tx=tx, ty=ty)
+    
+    new_image = place_patch(image, patch, transformation_matrix)
     # pred_attack = torch.concat(model(new_image)).squeeze(1)
     # loss = -torch.dist(prediction, pred_attack, p=2)
 
@@ -135,9 +135,11 @@ def untargeted_attack(image, patch, model, angle, scale, tx, ty, path='eval/unta
             opt.step()
 
             # patch.data.clamp_(0., 255.)
-            new_image = place_patch(image, patch, angle=angle, scale=scale, tx=tx, ty=ty)
+            new_image = place_patch(image, patch, transformation_matrix)
             if i % 100 == 0:
-                print("step %d, loss %.6f, angle %.2f, scale %.3f, tx %.3f, ty %0.3f" % (i, loss, np.degrees(angle.detach().numpy()), scale.detach().numpy(), tx.detach().numpy(), ty.detach().numpy()))
+                print("step %d, loss %.6f" % (i, loss))
+                print("transformation matrix: ", transformation_matrix.detach().numpy())
+                #print("step %d, loss %.6f, angle %.2f, scale %.3f, tx %.3f, ty %0.3f" % (i, loss, np.degrees(angle.detach().numpy()), scale.detach().numpy(), tx.detach().numpy(), ty.detach().numpy()))
     except KeyboardInterrupt:
         print("Aborting optimization...")    
 
@@ -147,9 +149,50 @@ def untargeted_attack(image, patch, model, angle, scale, tx, ty, path='eval/unta
 
     np.save(path+'losses_test', losses)
 
-    return patch, [angle, scale, tx, ty]
+    return patch, transformation_matrix #[angle, scale, tx, ty]
 
 if __name__=="__main__":
+    # import matplotlib.pyplot as plt
+    # import os
+
+    # from util import load_dataset, load_model
+    # model_path = '../pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
+    # model_config = '160x32'
+    # dataset_path = '../pulp-frontnet/PyTorch/Data/160x96OthersTrainsetAug.pickle'
+
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # model = load_model(path=model_path, device=device, config=model_config)
+    # model.eval()
+    # dataset = load_dataset(path=dataset_path, batch_size=32, shuffle=True, drop_last=True, num_workers=0)
+
+    # path = 'eval/targeted_2_sides/'
+    # os.makedirs(path, exist_ok = True)
+
+    # image, pose = dataset.dataset.__getitem__(0)
+    # image = image.unsqueeze(0)
+    # attack = TargetedAttack(model, dataset, path=path)
+
+    # np.save(path+'ori_patch', attack.x_patch.patch.detach().numpy())
+
+    # print("Original pose: ", pose, pose.shape)
+    # prediction = torch.concat(model(image)).squeeze(1)
+    # print("Predicted pose: ", prediction)
+    # print("L2 dist original-predicted: ", torch.dist(pose, prediction, p=2))
+
+    # optimized_x_patch = attack.optimize()
+    
+    # np.save(path+"opti_patch", optimized_x_patch.patch.detach().numpy())
+    # new_image_right = place_patch(image, optimized_x_patch.patch, *optimized_x_patch.patch_parameters_min)
+
+    # plt.imshow(new_image_right[0][0].detach().numpy(), cmap='gray')
+    # plt.show()
+
+    # new_image_left = place_patch(image, optimized_x_patch.patch, *optimized_x_patch.patch_parameters_max)
+
+    # plt.imshow(new_image_left[0][0].detach().numpy(), cmap='gray')
+    # plt.show()
+
     import matplotlib.pyplot as plt
     import os
 
@@ -164,29 +207,53 @@ if __name__=="__main__":
     model.eval()
     dataset = load_dataset(path=dataset_path, batch_size=32, shuffle=True, drop_last=True, num_workers=0)
 
-    path = 'eval/targeted_2_sides/'
+    path = 'eval/untargeted/'
     os.makedirs(path, exist_ok = True)
 
-    image, pose = dataset.dataset.__getitem__(0)
-    image = image.unsqueeze(0)
-    attack = TargetedAttack(model, dataset, path=path)
+    # calculate random translation, rotation (in radians), and scale factor
+    # tx = torch.randint(high=2, size=(1,)).float().requires_grad_()    # TODO: fix translation such that patch is always visible
+    # ty = torch.randint(high=2, size=(1,)).float().requires_grad_()
+    # rotation = torch.distributions.uniform.Uniform(np.radians(-45), np.radians(45)).sample().requires_grad_()  # PyTorch doesn't offer a radians function yet
+    # scale = torch.distributions.uniform.Uniform(0.01, 0.7).sample().requires_grad_()
 
-    np.save(path+'ori_patch', attack.x_patch.patch.detach().numpy())
+    # tx = torch.tensor([0.2]).float().requires_grad_()
+    # ty = torch.tensor([0.1]).float().requires_grad_()
+    # rotation = torch.tensor(np.radians(35.76629)).requires_grad_()
+    # scale = torch.tensor(0.3).requires_grad_()
+
+    # print("Rotation: ", np.degrees(rotation.detach().numpy()))
+    # print("Scale: ", scale.detach().numpy())
+    # print("Tx: ", tx.detach().numpy(), "Ty: ", ty.detach().numpy())
+
+    image, pose = dataset.dataset.__getitem__(0)
+    patch = (torch.rand(1, 1, 50, 50) * 255.).requires_grad_()
+    patch_copy = patch.detach().clone()
+    np.save(path+'ori_patch', patch_copy.numpy())
+
+    image = image.unsqueeze(0)
 
     print("Original pose: ", pose, pose.shape)
     prediction = torch.concat(model(image)).squeeze(1)
     print("Predicted pose: ", prediction)
     print("L2 dist original-predicted: ", torch.dist(pose, prediction, p=2))
-
-    optimized_x_patch = attack.optimize()
     
-    np.save(path+"opti_patch", optimized_x_patch.patch.detach().numpy())
-    new_image_right = place_patch(image, optimized_x_patch.patch, *optimized_x_patch.patch_parameters_min)
-
-    plt.imshow(new_image_right[0][0].detach().numpy(), cmap='gray')
+    # place the patch
+    transformation_matrix = torch.tensor([[[*torch.rand(3,)],[*torch.rand(3,)] , [0, 0, 1]]]).requires_grad_(True)
+    new_image = place_patch(image, patch, transformation_matrix)
+    plt.imshow(new_image[0][0].detach().numpy(), cmap='gray')
     plt.show()
 
-    new_image_left = place_patch(image, optimized_x_patch.patch, *optimized_x_patch.patch_parameters_max)
+    pred_attack = torch.concat(model(new_image)).squeeze(1)
+    print("Predicted pose after attack: ", pred_attack)
 
-    plt.imshow(new_image_left[0][0].detach().numpy(), cmap='gray')
+    print("L2 dist predicted-attack: ", torch.dist(prediction, pred_attack, p=2))
+
+    # target = torch.tensor([0.0, -0.7274,  0.3108, -0.1638])
+    # print("Target: ", target, target.shape )
+
+    optimized_patch, optimized_transformation_matrix = untargeted_attack(image, patch, model, transformation_matrix)
+    np.save(path+"opti_patch", optimized_patch.detach().numpy())
+    new_image = place_patch(image, patch, optimized_transformation_matrix)
+
+    plt.imshow(new_image[0][0].detach().numpy(), cmap='gray')
     plt.show()
