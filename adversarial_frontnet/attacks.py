@@ -31,7 +31,7 @@ class Patch(torch.nn.Module):
         return batch_min, batch_max
 
 class TargetedAttack():
-    def __init__(self, model, dataset, target=[True, False, False, False], learning_rate = 1e-3, path='eval/targeted/'):
+    def __init__(self, model, dataset, target=[True, False, False, False], learning_rate = 3e-5, path='eval/targeted/'):
         self.model = model
         self.dataset = dataset
         
@@ -86,8 +86,8 @@ class TargetedAttack():
                 if i % 1 == 0:
                     print("step %d, loss %.6f"  % (i, loss))
 
-                    print("Min: ", self.x_patch.patch_parameters_min.detach().numpy())
-                    print("Max: ", self.x_patch.patch_parameters_max.detach().numpy())
+                    print("Min: ", self.x_patch.transformation_min.detach().numpy())
+                    print("Max: ", self.x_patch.transformation_max.detach().numpy())
             
         except KeyboardInterrupt:                   # training process can be interrupted anytime
             print("Aborting optimization...")    
@@ -222,27 +222,25 @@ if __name__=="__main__":
     image, pose = dataset.dataset.__getitem__(0)
     image = image.unsqueeze(0)
     
-    #attack = TargetedAttack(model, dataset, path=path)
+    attack = TargetedAttack(model, dataset, path=path)
     
-
-    #np.save(path+'ori_patch', attack.x_patch.patch.detach().numpy())
+    np.save(path+'ori_patch', attack.x_patch.patch.detach().numpy())
 
     print("Original pose: ", pose, pose.shape)
     prediction = torch.concat(model(image)).squeeze(1)
     print("Predicted pose: ", prediction)
     print("L2 dist original-predicted: ", torch.dist(pose, prediction, p=2))
 
-    optimized_x_patch, optimized_transformation = targeted_attack(image, torch.tensor([4., *prediction[1:]]), model, path)
-    #optimized_x_patch = attack.optimize()
+    #optimized_x_patch, optimized_transformation = targeted_attack(image, torch.tensor([4., *prediction[1:]]), model, path)
+    optimized_x_patch = attack.optimize()
     
-    #np.save(path+"opti_patch", optimized_x_patch.patch.detach().numpy())
-    #new_image_right = place_patch(image, optimized_x_patch.patch, *optimized_x_patch.patch_parameters_min)
-    new_image_right = place_patch(image, optimized_x_patch, optimized_transformation)
+    np.save(path+"opti_patch", optimized_x_patch.patch.detach().numpy())
+    new_image_min = place_patch(image, optimized_x_patch.patch, optimized_x_patch.transformation_min)
 
-    plt.imshow(new_image_right[0][0].detach().numpy(), cmap='gray')
+    plt.imshow(new_image_min[0][0].detach().numpy(), cmap='gray')
     plt.show()
 
-    # new_image_left = place_patch(image, optimized_x_patch.patch, *optimized_x_patch.patch_parameters_max)
+    new_image_max = place_patch(image, optimized_x_patch.patch, optimized_x_patch.transformation_max)
 
-    # plt.imshow(new_image_left[0][0].detach().numpy(), cmap='gray')
-    # plt.show()
+    plt.imshow(new_image_max[0][0].detach().numpy(), cmap='gray')
+    plt.show()
