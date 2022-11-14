@@ -106,35 +106,54 @@ def targeted_attack(image, target, model, path="eval/targeted/"):
     opt = torch.optim.Adam(x_patch.parameters(), lr=3e-5)
     prediction = torch.concat(model(image)).squeeze(1)
     
-    new_image = place_patch(image, x_patch.patch, x_patch.transformation_min)
-    pred_attack = torch.concat(model(new_image)).squeeze(1)
-    loss = torch.dist(prediction, pred_attack, p=2)
+    new_image_min = place_patch(image, x_patch.patch, x_patch.transformation_min)
+    new_image_max = place_patch(image, x_patch.patch, x_patch.transformation_max)
+    
+    pred_attack_min = torch.concat(model(new_image_min)).squeeze(1)
+    pred_attack_max = torch.concat(model(new_image_max)).squeeze(1)
+    loss_min = torch.dist(prediction, pred_attack_min, p=2)
+    loss_max = torch.dist(prediction, pred_attack_max, p=2)
+
+    loss = (loss_min + loss_max) / 2.
 
     losses = []
     losses.append(loss.detach().numpy())
+
+    target_min = torch.tensor([0., *prediction[1:]])
+    target_max = torch.tensor([4., *prediction[1:]])
 
     i = 0.
     try:
         while loss > 0.01:
             i += 1
-            prediction = torch.concat(model(new_image)).squeeze(1)
-            loss = torch.dist(prediction, target, p=2)
+            # prediction = torch.concat(model(new_image)).squeeze(1)
+            # loss = torch.dist(prediction, target, p=2)
+            pred_attack_min = torch.concat(model(new_image_min)).squeeze(1)
+            pred_attack_max = torch.concat(model(new_image_max)).squeeze(1)
+            loss_min = torch.dist(pred_attack_min, target_min, p=2)
+            loss_max = torch.dist(pred_attack_max, target_max, p=2)
+
+            loss = (loss_min + loss_max) / 2.
             losses.append(loss.detach().numpy())
             opt.zero_grad()
             loss.backward()
             opt.step()
 
             x_patch.patch.data.clamp_(0., 255.)
-            new_image = place_patch(image, x_patch.patch, x_patch.transformation_min)
+            # new_image = place_patch(image, x_patch.patch, x_patch.transformation_min)
+            new_image_min = place_patch(image, x_patch.patch, x_patch.transformation_min)
+            new_image_max = place_patch(image, x_patch.patch, x_patch.transformation_max)
+    
             if i % 100 == 0:
                 print("step %d, loss %.6f" % (i, loss))
-                print("transformation matrix: ", x_patch.transformation_min.detach().numpy())
+                print("transformation matrix min: ", x_patch.transformation_min.detach().numpy())
+                print("transformation matrix max: ", x_patch.transformation_max.detach().numpy())
     except KeyboardInterrupt:
         print("Aborting optimization...")    
 
     print("Bing!")
     print("Last loss: ", loss.detach().numpy())
-    print("Last prediciton: ", pred_attack)
+    print("Last prediciton: ", pred_attack_min, pred_attack_max)
 
     np.save(path+'losses_test', losses)
 
