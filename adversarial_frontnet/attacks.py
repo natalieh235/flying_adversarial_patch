@@ -25,8 +25,10 @@ class Patch(torch.nn.Module):
         return torch.stack([image_min, image_max])
 
     def batch_place(self, batch):
-        out = torch.stack([self.place(img) for img in batch]).view((2, *batch.shape))
-        batch_min, batch_max = out
+        # out = torch.stack([self.place(img) for img in batch]).view((2, *batch.shape))
+        # batch_min, batch_max = out
+        batch_min = place_patch(batch, self.patch, self.transformation_min)
+        batch_max = place_patch(batch, self.patch, self.transformation_max)
 
         return batch_min, batch_max
 
@@ -53,7 +55,7 @@ class TargetedAttack():
         try:
             losses = []
             for i in range(epochs):
-                for _ in range(4):#len(self.dataset)):
+                for _ in range(len(self.dataset)):
                     image_batch, pose_batch = next(iter(self.dataset))
                     image_batch = image_batch.to(self.device)
                     pose_batch = pose_batch.to(self.device)
@@ -211,7 +213,7 @@ if __name__=="__main__":
 
     model = load_model(path=model_path, device=device, config=model_config)
     model.eval()
-    dataset = load_dataset(path=dataset_path, batch_size=3, shuffle=True, drop_last=True, num_workers=0)
+    dataset = load_dataset(path=dataset_path, batch_size=32, shuffle=True, drop_last=True, num_workers=0)
     # dataset.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # dataset.dataset.labels.to(device)
 
@@ -235,7 +237,7 @@ if __name__=="__main__":
     optimized_x_patch = attack.optimize()
     
     np.save(path+"opti_patch", optimized_x_patch.patch.detach().cpu().numpy())
-    # new_image_min = place_patch(image, optimized_x_patch.patch, optimized_x_patch.transformation_min)
+    new_image_min = place_patch(image, optimized_x_patch.patch, optimized_x_patch.transformation_min)
 
     # plt.imshow(new_image_min[0][0].detach().cpu().numpy(), cmap='gray')
     # plt.show()
