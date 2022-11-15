@@ -333,7 +333,7 @@ def place_patch(image, patch, transformation_matrix):
     # print(transformation_matrix.shape)
 
     # PyTorch's affine grid funtion needs the inverse of the 3x3 transformation matrix
-    transformation_matrix = torch.cat((transformation_matrix, torch.tensor([[[0, 0, 1]]])), dim=1)
+    transformation_matrix = torch.cat((transformation_matrix, torch.tensor([[[0, 0, 1]]], device=transformation_matrix.device)), dim=1)
     inv_t_matrix = torch.inverse(transformation_matrix)[:, :2] # affine grid expects only the first 2 rows, the last row (0, 0, 1) is neglected
     affine_grid = torch.nn.functional.affine_grid(inv_t_matrix, size=(1, 1, 96, 160), align_corners=False)
 
