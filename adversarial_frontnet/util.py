@@ -1,7 +1,7 @@
 import torch
 import sys
 
-sys.path.insert(0,'../pulp-frontnet/PyTorch')
+sys.path.insert(0,'/home/hanfeld/adversarial_frontnet/pulp-frontnet/PyTorch/')
 from Frontnet.Frontnet import FrontnetModel
 
 from Frontnet.DataProcessor import DataProcessor
@@ -64,3 +64,30 @@ def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_w
     data_loader = data.DataLoader(dataset, **data_params)
 
     return data_loader
+
+
+def plot_patch(patch, image, title='Plot', save=False, path='./'):
+    import matplotlib.pyplot as plt
+
+    img_min, img_max = patch.batch_place(image)
+
+    f = plt.figure(constrained_layout=True, figsize=(10, 4))
+    subfigs = f.subfigures(1, 2, width_ratios=[1, 3])
+    fig_patch = subfigs[0].subplots(1,1)
+    fig_patch.imshow(patch.patch[0][0].detach().cpu().numpy(), cmap='gray')
+    subfigs[0].suptitle('Patch', fontsize='x-large')
+
+    subfigs[1].suptitle('placed', fontsize='x-large')
+    fig_placed = subfigs[1].subplots(1,2)
+    fig_placed[0].imshow(img_min[0][0].detach().cpu().numpy(), cmap='gray')
+    fig_placed[0].set_title('min direction')
+    fig_placed[1].imshow(img_max[0][0].detach().cpu().numpy(), cmap='gray')
+    fig_placed[1].set_title('max direction')
+
+    f.suptitle(title, fontsize='xx-large')
+    
+    if save:
+        plt.savefig(path+title+'.jpg', transparent=False)
+        plt.close()
+    else: 
+        return f
