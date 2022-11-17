@@ -76,7 +76,7 @@ static int check_activations[9] = {1956945, 190544, 78451, 21981, 32374, 17120, 
 static int check_activations_dimension[9] = {15360, 122880, 30720, 7680, 7680, 3840, 3840, 1920, 1920};
 static int out_mult_vector[9] = {1, 1, 1, 1, 1, 1, 1, 1, 1};
 static int out_shift_vector[9] = {24, 0, 23, 23, 23, 23, 24, 22, 0};
-static int check_activations_out[9] = {190544, 78451, 21981, 32374, 17120, 20789, 4775, 8937, -30179};
+static int check_activations_out[9] = {190544, 78451, 21981, 32374, 17120, 20789, 4775, 8937, -30178};
 static int check_activations_out_dimension[9] = {122880, 30720, 7680, 7680, 3840, 3840, 1920, 1920, 16};
 static int layer_with_weights[9] = {1, 0, 1, 1, 1, 1, 1, 1, 1};
 #endif

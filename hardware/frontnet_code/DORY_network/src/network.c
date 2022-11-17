@@ -20,15 +20,15 @@
 #define DEFINE_CONSTANTS
 #include "network.h"
 #include "dory.h"
-#include "BNReluConvolution5.h"
-#include "BNReluConvolution4.h"
-#include "Pooling1.h"
-#include "BNReluConvolution3.h"
-#include "BNReluConvolution2.h"
-#include "BNReluConvolution7.h"
-#include "FullyConnected8.h"
 #include "BNReluConvolution0.h"
+#include "BNReluConvolution3.h"
+#include "BNReluConvolution4.h"
+#include "FullyConnected8.h"
+#include "BNReluConvolution5.h"
+#include "BNReluConvolution7.h"
 #include "BNReluConvolution6.h"
+#include "Pooling1.h"
+#include "BNReluConvolution2.h"
 
 #define FLASH_BUFF_SIZE 128
 #define VERBOSE 1

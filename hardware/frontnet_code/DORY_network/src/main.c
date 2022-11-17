@@ -61,6 +61,32 @@ void open_filesystem_and_ram(struct pi_device *flash, struct pi_device *fs)
   pi_ram_open(&ram);
 }
 
+static void send_gap8(char* L2_output)
+{
+  printf("Entering main controller...\n");
+
+  // set configurations in uart
+  struct pi_uart_conf conf;
+  struct pi_device device;
+  pi_uart_conf_init(&conf);
+  conf.baudrate_bps =115200;
+
+  // Open uart
+  pi_open_from_conf(&device, &conf);
+  printf("[UART] Open\n");
+  if (pi_uart_open(&device))
+  {
+    printf("[UART] open failed !\n");
+    pmsis_exit(-1);
+  }
+
+  pi_uart_open(&device);
+
+  // Write the value to uart
+  pi_uart_write(&device, &L2_output, 1);
+
+}
+
 int main () {
   char* L2_memory_buffer;
   char* L2_input;
@@ -126,6 +152,10 @@ int main () {
     }
     printf("\n");
 #endif
+/*
+    Send network output via UART to GAP8
+*/
+    send_gap8(L2_output);
 /*
     Deallocation
 */

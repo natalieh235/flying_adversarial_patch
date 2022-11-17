@@ -111,6 +111,14 @@ python pulp-frontnet/PyTorch/Scripts/QExport.py '160x32' --load-model 'pulp-fron
 
 This will create a new folder `Results/160x32/Export` in which the `Frontnet.onnx` is saved.
 
+For generating the flashable image, we'll utilize the Bitcraze AI deck docker image, since building depends partially on the GAP SDK.\
+Run the docker image and mount this repository
+```bash
+docker run -it -v /path/to/adversarial_frontnet/:/home/adversarial_frontnet bitcraze/aideck
+source /gap_sdk/configs/ai_deck.sh
+cd /home/
+```
+
 We use DORY to generate a flashable image from the `.onnx` file.
 ```bash
 # clone the repository
@@ -119,22 +127,23 @@ cd dory
 # we tested dory on this commit
 git checkout 06b1b91fe1aa77f87b3baae97ee8dcb03eef1785
 # get submodules
-git submodule sync
-git submodule update --init --recursive
+git submodule update --remote --init dory/Hardware_targets/GAP8/Backend_Kernels/pulp-nn
+git submodule update --remote --init dory/Hardware_targets/GAP8/Backend_Kernels/pulp-nn-mixed
 # install DORY as pip pickage into your current python environment
 python -m pip install -e .
 ```
 
 Now generate the image with the provided script:
 ```bash
-python network_generate.py NEMO GAP8.GAP8_gvsoc /path/to/adversarial_frontnet/misc/dory_config.json --app_dir /path/to/adversarial_frontnet/hardware/frontnet_code/
+python network_generate.py NEMO GAP8.GAP8_gvsoc /home/adversarial_frontnet/misc/dory_config.json --app_dir /home/adversarial_frontnet/hardware/frontnet_code/
 ```
+
+TODO: Add section about adapting the source code before building!
 
 Lastly, to generate the C code and flashable image:
 ```bash
-cd /path/to/adversarial_frontnet/hardware/frontnet_code/
+cd /home/adversarial_frontnet/hardware/frontnet_code/
 make clean all run CORE=8 platform=gvsoc
 ```
-TODO: make is not working currently!
 
 
