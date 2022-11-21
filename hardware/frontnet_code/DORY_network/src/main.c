@@ -29,6 +29,17 @@ static uint8_t flashBuffer[FLASH_BUFF_SIZE];
 
 char* L2_output;
 
+static pi_task_t led_task;
+static int led_val = 0;
+static struct pi_device gpio_device;
+
+static void led_handle(void *arg)
+{
+  pi_gpio_pin_write(&gpio_device, 2, led_val);
+  led_val ^= 1;
+  pi_task_push_delayed_us(pi_task_callback(&led_task, led_handle, NULL), 500000);
+}
+
 
 // filesystem management functions
 void open_filesystem_and_ram(struct pi_device *flash, struct pi_device *fs)
@@ -41,6 +52,7 @@ void open_filesystem_and_ram(struct pi_device *flash, struct pi_device *fs)
   pi_open_from_conf(flash, &flash_conf);
   if (pi_flash_open(flash))
   {
+      // cpxPrintToConsole(LOG_TO_CRTP, "Error flash open !\n");
       printf("Error flash open !\n");
       pmsis_exit(-1);
   }
@@ -51,6 +63,7 @@ void open_filesystem_and_ram(struct pi_device *flash, struct pi_device *fs)
   pi_open_from_conf(fs, &conf);
   if (pi_fs_mount(fs))
   {
+      // cpxPrintToConsole(LOG_TO_CRTP, "Error FS mounting !\n");
       printf("Error FS mounting !\n");
       pmsis_exit(-2);
   }
@@ -71,6 +84,9 @@ static void send_gap8(char* L2_output)
   pi_uart_conf_init(&conf);
   conf.baudrate_bps =115200;
 
+  // // configure LED
+  // pi_gpio_pin_configure(&gpio_device, 2, PI_GPIO_OUTPUT);
+
   // Open uart
   pi_open_from_conf(&device, &conf);
   printf("[UART] Open\n");
@@ -82,21 +98,32 @@ static void send_gap8(char* L2_output)
 
   pi_uart_open(&device);
 
+  // toggle LED when sending information
+  pi_gpio_pin_write(&gpio_device, 2, led_val);
+  led_val ^= 1;
+  pi_task_push_delayed_us(pi_task_callback(&led_task, led_handle, NULL), 500000);  
   // Write the value to uart
   pi_uart_write(&device, &L2_output, 1);
+
+  pi_gpio_pin_write(&gpio_device, 2, led_val);
+  led_val ^= 1;
+  pi_task_push_delayed_us(pi_task_callback(&led_task, led_handle, NULL), 500000);
 
 }
 
 int main () {
   char* L2_memory_buffer;
   char* L2_input;
-  PMU_set_voltage(1000, 0);
-  pi_time_wait_us(10000);
-  pi_freq_set(PI_FREQ_DOMAIN_FC, 100000000);
-  pi_time_wait_us(10000);
-  pi_freq_set(PI_FREQ_DOMAIN_CL, 100000000);
-  pi_time_wait_us(10000);
+  // PMU_set_voltage(1000, 0);
+  // pi_time_wait_us(10000);
+  // pi_freq_set(PI_FREQ_DOMAIN_FC, 100000000);
+  // pi_time_wait_us(10000);
+  // pi_freq_set(PI_FREQ_DOMAIN_CL, 100000000);
+  // pi_time_wait_us(10000);
 
+
+  printf("debug: start main");
+  // send_gap8("debug: start main, own print");
 /*
     Opening of Filesystem and Ram
 */
@@ -108,6 +135,7 @@ int main () {
   file = pi_fs_open(&fs, "inputs.hex", 0);
   if (file == NULL)
   {
+    // // cpxPrintToConsole(LOG_TO_CRTP, "file open failed\n");
     printf("file open failed\n");
     return -1;
   }
@@ -132,6 +160,7 @@ int main () {
   int begin_end = 1;
   L2_input = L2_memory_buffer + (1 - begin_end) * (380000 - rdDone);
   L2_output = L2_memory_buffer;
+  // cpxPrintToConsole(LOG_TO_CRTP, "\nL2 Buffer alloc initial\t@ 0x%08x:\t%s\n", (unsigned int)L2_memory_buffer, L2_memory_buffer?"Ok":"Failed");
 #ifdef VERBOSE
   printf("\nL2 Buffer alloc initial\t@ 0x%08x:\t%s\n", (unsigned int)L2_memory_buffer, L2_memory_buffer?"Ok":"Failed");
 #endif
@@ -144,18 +173,23 @@ int main () {
     Running of the network
 */
   	network_run(L2_memory_buffer, 380000, L2_output, begin_end, ram);
-#ifdef VERBOSE
+    // cpxPrintToConsole(LOG_TO_CRTP, "Hello world, frontnet is working!");
+// #ifdef VERBOSE
     printf("Network Output: ");
+    // cpxPrintToConsole(LOG_TO_CRTP, "Network Output: ");
     for(int i = 0; i < 16; i+=4)
     {
       printf("%d ", *(int32_t *)(L2_output + i));
+      // cpxPrintToConsole(LOG_TO_CRTP, "%d", *(int32_t *)(L2_output + i));
     }
     printf("\n");
-#endif
-/*
-    Send network output via UART to GAP8
-*/
-    send_gap8(L2_output);
+    // cpxPrintToConsole(LOG_TO_CRTP, "Network Output: ");
+// #endif
+
+// /*
+//     Send network output via UART to GAP8
+// */
+//     send_gap8(L2_output);
 /*
     Deallocation
 */
