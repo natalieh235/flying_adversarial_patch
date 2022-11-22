@@ -158,6 +158,47 @@ class TargetedAttack():
         np.save(save_path+'all_losses', self.all_losses)
         np.save(save_path+'all_avg_losses', self.all_avg_losses)
 
+def targeted_attack(image, patch, target, model, transformation_matrix, path="eval/targeted/"):
+    # initialize optimizer
+    opt = torch.optim.Adam([transformation_matrix], lr=1e-1)
+    prediction = torch.concat(model(image)).squeeze(1)
+
+    new_image = place_patch(image, patch, transformation_matrix)
+    pred_attack = torch.concat(model(new_image)).squeeze(1)
+    loss = torch.dist(prediction, pred_attack, p=2)
+
+    losses = []
+    losses.append(loss.detach().cpu().numpy())
+
+    i = 0.
+    try:
+        while loss > 0.01:
+            i += 1
+            prediction = torch.concat(model(new_image)).squeeze(1)
+            loss = torch.dist(prediction[1], target[1], p=2)
+            losses.append(loss.detach().cpu().numpy())
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+
+            # patch.data.clamp_(0., 255.)
+            new_image = place_patch(image, patch, transformation_matrix)
+            
+            
+            
+            if i % 100 == 0:
+                print("step %d, loss %.6f" % (i, loss.detach().cpu().numpy()))
+                print("matrix: ", transformation_matrix.view(-1).detach().cpu().numpy())
+    except KeyboardInterrupt:
+        print("Aborting optimization...")    
+
+    print("Bing!")
+    print("Last loss: ", loss.detach().cpu().numpy())
+    print("Last prediciton: ", prediction)
+
+    np.save(path+'losses_test', losses)
+
+    return patch, transformation_matrix
 
 def untargeted_attack(image, patch, model, transformation_matrix, path='eval/untargeted/'): # angle, scale, tx, ty,
     # initialize optimizer
@@ -193,7 +234,7 @@ def untargeted_attack(image, patch, model, transformation_matrix, path='eval/unt
         print("Aborting optimization...")    
 
     print("Bing!")
-    print("Last loss: ", loss.detach().numpy())
+    print("Last loss: ", loss.detach().cpu().numpy())
     print("Last prediciton: ", pred_attack)
 
     np.save(path+'losses_test', losses)
@@ -207,7 +248,7 @@ if __name__=="__main__":
     from util import load_dataset, load_model
     model_path = '/home/hanfeld/adversarial_frontnet/pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
     model_config = '160x32'
-    dataset_path = '/home/hanfeld/adversarial_frontnet/pulp-frontnet/PyTorch/Data/160x96OthersTrainsetAug.pickle'
+    dataset_path = '/home/hanfeld/adversarial_frontnet/pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle'
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -217,24 +258,43 @@ if __name__=="__main__":
     # dataset.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # dataset.dataset.labels.to(device)
 
-    path = 'eval/targeted_test/'
+    path = 'eval/targeted_custom_patch_1e-1/'
     os.makedirs(path, exist_ok = True)
+
+    patch = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch.npy")
+    patch = torch.from_numpy(patch).unsqueeze(0).unsqueeze(0).to(device)
+    
+    transformation_matrix = torch.tensor([[[*torch.rand(3,)],[*torch.rand(3,)]]], device=device).requires_grad_(True)
 
     image, pose = dataset.dataset.__getitem__(0)
     image = image.unsqueeze(0).to(device)
-    pose = pose.to(device)
     
-    attack = TargetedAttack(model, dataset, device, path=path)
-    
-    np.save(path+'ori_patch', attack.x_patch.patch.detach().cpu().numpy())
+    pose[1] = -2.
+    target = pose.to(device)
 
-    print("Original pose: ", pose, pose.shape)
-    prediction = torch.concat(model(image)).squeeze(1)
-    print("Predicted pose: ", prediction)
-    print("L2 dist original-predicted: ", torch.dist(pose, prediction, p=2))
+    np.save(path+'ori_matrix', transformation_matrix.detach().cpu().numpy())
 
-    #optimized_x_patch, optimized_transformation = targeted_attack(image, torch.tensor([4., *prediction[1:]]), model, path)
-    optimized_x_patch, optimized_y_patch, optimized_z_patch = attack.optimize()
+    _, optimized_matrix = targeted_attack(image, patch, target, model, transformation_matrix, path)
+
+    np.save(path+'optimized_matrix', optimized_matrix.detach().cpu().numpy())
+
+
+
+    # image, pose = dataset.dataset.__getitem__(0)
+    # image = image.unsqueeze(0).to(device)
+    # pose = pose.to(device)
     
-    np.save(path+"opti_patch", optimized_x_patch.patch.detach().cpu().numpy())
-    new_image_min = place_patch(image, optimized_x_patch.patch, optimized_x_patch.transformation_min)
+    # attack = TargetedAttack(model, dataset, device, path=path)
+    
+    # np.save(path+'ori_patch', attack.x_patch.patch.detach().cpu().numpy())
+
+    # print("Original pose: ", pose, pose.shape)
+    # prediction = torch.concat(model(image)).squeeze(1)
+    # print("Predicted pose: ", prediction)
+    # print("L2 dist original-predicted: ", torch.dist(pose, prediction, p=2))
+
+    # #optimized_x_patch, optimized_transformation = targeted_attack(image, torch.tensor([4., *prediction[1:]]), model, path)
+    # optimized_x_patch, optimized_y_patch, optimized_z_patch = attack.optimize()
+    
+    # np.save(path+"opti_patch", optimized_x_patch.patch.detach().cpu().numpy())
+    # new_image_min = place_patch(image, optimized_x_patch.patch, optimized_x_patch.transformation_min)
