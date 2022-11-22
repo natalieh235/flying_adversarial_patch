@@ -160,7 +160,7 @@ class TargetedAttack():
 
 def targeted_attack(image, patch, target, model, transformation_matrix, path="eval/targeted/"):
     # initialize optimizer
-    opt = torch.optim.Adam([transformation_matrix], lr=1e-1)
+    opt = torch.optim.Adam([transformation_matrix], lr=1e-2)
     prediction = torch.concat(model(image)).squeeze(1)
 
     new_image = place_patch(image, patch, transformation_matrix)
@@ -183,8 +183,6 @@ def targeted_attack(image, patch, target, model, transformation_matrix, path="ev
 
             # patch.data.clamp_(0., 255.)
             new_image = place_patch(image, patch, transformation_matrix)
-            
-            
             
             if i % 100 == 0:
                 print("step %d, loss %.6f" % (i, loss.detach().cpu().numpy()))
@@ -258,13 +256,17 @@ if __name__=="__main__":
     # dataset.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # dataset.dataset.labels.to(device)
 
-    path = 'eval/targeted_custom_patch_1e-1/'
+    path = 'eval/targeted_custom_patch_zero_matrix/'
     os.makedirs(path, exist_ok = True)
 
     patch = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch.npy")
     patch = torch.from_numpy(patch).unsqueeze(0).unsqueeze(0).to(device)
     
-    transformation_matrix = torch.tensor([[[*torch.rand(3,)],[*torch.rand(3,)]]], device=device).requires_grad_(True)
+    #transformation_matrix = torch.tensor([[[*torch.rand(3,)],[*torch.rand(3,)]]], device=device).requires_grad_(True)
+    transformation_matrix = torch.zeros((1,2,3), device=device)
+    transformation_matrix[..., 0, 0] = 1.
+    transformation_matrix[..., 1, 1] = 1.
+    transformation_matrix = transformation_matrix.requires_grad_(True)
 
     image, pose = dataset.dataset.__getitem__(0)
     image = image.unsqueeze(0).to(device)
