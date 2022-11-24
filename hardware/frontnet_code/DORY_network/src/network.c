@@ -325,8 +325,10 @@ void network_run(char *L2_memory_buffer, int L2_memory_dimension, char *L2_outpu
     pi_perf_start();
     pi_cluster_task(&cluster_task, execute_layer_fork, args);
     pi_open_from_conf(&cluster_dev, &conf);
-    if (pi_cluster_open(&cluster_dev))
+    if (pi_cluster_open(&cluster_dev)) {
+      printf("OPEN FAILED");
       return -1;
+    }
     // Then offload an entry point, this will get executed on the cluster controller
     cluster_task.stack_size = 3500;
     cluster_task.slave_stack_size = 3400;
