@@ -33,7 +33,7 @@
 
 PI_L2 unsigned char *buff;
 
-PI_L2 unsigned char *croppedImg;
+// PI_L2 unsigned char *croppedImg;
 PI_L2 unsigned char *outputNN;
 char* L2_memory_buffer;
 
@@ -84,10 +84,10 @@ void open_filesystem_and_ram(struct pi_device *flash, struct pi_device *fs)
   pi_ram_open(&ram);
 }
 
-void cropImage(unsigned char *imgBuff, unsigned char *croppedImg)
+void cropImage(unsigned char *imgBuff, unsigned char *L2_input_buffer)
 {
   uint32_t offset = 35;
-  unsigned char *curr_adr = croppedImg;
+  unsigned char *curr_adr = L2_input_buffer;
 
   for (uint8_t idx_h = 0; idx_h <97; idx_h++)
   {
@@ -167,39 +167,42 @@ int prediction_task(void)
     L2_memory_buffer = pi_l2_malloc((uint32_t) 380000);
 
 
-    croppedImg = (unsigned char *)pmsis_l2_malloc(96*160*sizeof(unsigned char));
-    if (croppedImg == NULL){ return -1;}
+    // croppedImg = (unsigned char *)pmsis_l2_malloc(96*160*sizeof(unsigned char));
+    // if (croppedImg == NULL){ return -1;}
 
-    outputNN = (unsigned char *)pmsis_l2_malloc(4*sizeof(unsigned char));
+    outputNN = (unsigned char *)pmsis_l2_malloc(4*sizeof(unsigned int));
     if (outputNN == NULL){ return -1;}
 
     // buff_demosaick = pmsis_l2_malloc(BUFF_SIZE);
     // if (buff_demosaick == NULL){ return -1;}
     printf("Initialized buffers\n");
 
-    // Start the camera
-    pi_camera_control(&camera, PI_CAMERA_CMD_START, 0);
-    pi_camera_capture(&camera, buff, BUFF_SIZE);
-
-    // Stop the camera and immediately close it
-    pi_camera_control(&camera, PI_CAMERA_CMD_STOP, 0);
-    pi_camera_close(&camera);
-
-
-    cropImage(buff, croppedImg);
-    memcpy(L2_memory_buffer, croppedImg, sizeof(croppedImg));
-    printf("\nL2 Buffer alloc initial\t@ 0x%08x:\t%s\n", (unsigned int)L2_memory_buffer, L2_memory_buffer?"Ok":"Failed");
-
-    int begin_end = 1;
-    network_run(L2_memory_buffer, 380000, outputNN, begin_end, ram);
-    printf("Network Output: ");
-    // cpxPrintToConsole(LOG_TO_CRTP, "Network Output: ");
-    for(int i = 0; i < 16; i+=4)
+    while(1)
     {
-      printf("%d ", *(int32_t *)(outputNN + i));
-      // cpxPrintToConsole(LOG_TO_CRTP, "%d", *(int32_t *)(L2_output + i));
+        // Start the camera
+        pi_camera_control(&camera, PI_CAMERA_CMD_START, 0);
+        pi_camera_capture(&camera, buff, BUFF_SIZE);
+
+        // Stop the camera and immediately close it
+        pi_camera_control(&camera, PI_CAMERA_CMD_STOP, 0);
+        pi_camera_close(&camera);
+
+
+        cropImage(buff, L2_memory_buffer);
+        // memcpy(L2_memory_buffer, croppedImg, sizeof(croppedImg));
+        printf("\nL2 Buffer alloc initial\t@ 0x%08x:\t%s\n", (unsigned int)L2_memory_buffer, L2_memory_buffer?"Ok":"Failed");
+
+        int begin_end = 1;
+        network_run(L2_memory_buffer, 380000, outputNN, begin_end, ram);
+        printf("Network Output: ");
+        // cpxPrintToConsole(LOG_TO_CRTP, "Network Output: ");
+        for(int i = 0; i < 16; i+=4)
+        {
+        printf("%d ", *(int32_t *)(outputNN + i));
+        // cpxPrintToConsole(LOG_TO_CRTP, "%d", *(int32_t *)(L2_output + i));
+        }
+        printf("\n");
     }
-    printf("\n");
 
     pi_ram_free(&ram, activations_input, 500000);
     network_free(ram);  
