@@ -170,7 +170,7 @@ int prediction_task(void)
     // croppedImg = (unsigned char *)pmsis_l2_malloc(96*160*sizeof(unsigned char));
     // if (croppedImg == NULL){ return -1;}
 
-    outputNN = (unsigned char *)pmsis_l2_malloc(4*sizeof(unsigned int));
+    outputNN = (unsigned char *)pmsis_l2_malloc(16*sizeof(unsigned int));
     if (outputNN == NULL){ return -1;}
 
     // buff_demosaick = pmsis_l2_malloc(BUFF_SIZE);
@@ -193,9 +193,6 @@ int prediction_task(void)
         printf("Stopping camera...\n");
         pi_camera_control(&camera, PI_CAMERA_CMD_STOP, 0);
         printf("Finished!\n");
-        printf("Closing camera...\n");
-        pi_camera_close(&camera);
-        printf("Finished!\n");
 
 
         cropImage(buff, L2_memory_buffer);
@@ -217,6 +214,9 @@ int prediction_task(void)
     }
 
     printf("Exiting loop!\n");
+    printf("Closing camera...\n");
+    pi_camera_close(&camera);
+    printf("Finished!\n");
     pi_ram_free(&ram, activations_input, 500000);
     network_free(ram);  
     // pi_l2_free(, (uint32_t) 380000);
