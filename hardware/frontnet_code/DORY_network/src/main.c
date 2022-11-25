@@ -179,13 +179,23 @@ int prediction_task(void)
 
     while(1)
     {
+        printf("Entering loop...\n");
         // Start the camera
+        printf("Start camera...\n");
         pi_camera_control(&camera, PI_CAMERA_CMD_START, 0);
+        printf("Finished starting camera!\n");
+
+        printf("Capturing image...\n");
         pi_camera_capture(&camera, buff, BUFF_SIZE);
+        printf("Finished!\n");
 
         // Stop the camera and immediately close it
+        printf("Stopping camera...\n");
         pi_camera_control(&camera, PI_CAMERA_CMD_STOP, 0);
+        printf("Finished!\n");
+        printf("Closing camera...\n");
         pi_camera_close(&camera);
+        printf("Finished!\n");
 
 
         cropImage(buff, L2_memory_buffer);
@@ -202,8 +212,11 @@ int prediction_task(void)
         // cpxPrintToConsole(LOG_TO_CRTP, "%d", *(int32_t *)(L2_output + i));
         }
         printf("\n");
+
+        
     }
 
+    printf("Exiting loop!\n");
     pi_ram_free(&ram, activations_input, 500000);
     network_free(ram);  
     // pi_l2_free(, (uint32_t) 380000);
