@@ -170,7 +170,7 @@ int prediction_task(void)
     // croppedImg = (unsigned char *)pmsis_l2_malloc(96*160*sizeof(unsigned char));
     // if (croppedImg == NULL){ return -1;}
 
-    outputNN = (unsigned char *)pmsis_l2_malloc(16*sizeof(unsigned int));
+    outputNN = L2_memory_buffer;//(unsigned char *)pmsis_l2_malloc(16*sizeof(unsigned int));
     if (outputNN == NULL){ return -1;}
 
     // buff_demosaick = pmsis_l2_malloc(BUFF_SIZE);
