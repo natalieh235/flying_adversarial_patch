@@ -316,7 +316,7 @@ int prediction_task(void)
 
         begin_end = 1;
         // printf("PART1\n");
-        network_run(L2_memory_buffer, 380000, L2_output, begin_end, ram);
+        // network_run(L2_memory_buffer, 380000, L2_output, begin_end, ram);
         // printf("Network Output: ");
         // // cpxPrintToConsole(LOG_TO_CRTP, "Network Output: ");
         // for(int i = 0; i < 16; i+=4)
@@ -339,19 +339,19 @@ int prediction_task(void)
         #ifdef VERBOSE
         printf("Cropping image...\n");
         #endif
-        // cropImage(buff, croppedImg);
+        cropImage(buff, croppedImg);
         // value = 0x01;
         // pi_uart_write(&uart, &value, 1);
         #ifdef VERBOSE
         printf("Finished!\n");
         #endif
-        // memcpy(L2_input, croppedImg, 15360);
+        memcpy(L2_input, croppedImg, 15360);
         // value = 0x02;
         // pi_uart_write(&uart, &value, 1);
         #ifdef VERBOSE
         printf("Copy finished!\n");
         #endif
-        // network_run(L2_memory_buffer, 380000, L2_output, begin_end, ram);
+        network_run(L2_memory_buffer, 380000, L2_output, begin_end, ram);
         // value = 0x03;
         // pi_uart_write(&uart, &value, 1);
         // #ifdef VERBOSE
@@ -404,7 +404,7 @@ int prediction_task(void)
 
         printf("Waiting...\n");
         #endif
-        pi_ram_read(&ram, activations_input, L2_input, 15360);
+        // pi_ram_read(&ram, activations_input, L2_input, 15360);
         // pi_time_wait_us(2000000);
         
     }
