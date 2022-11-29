@@ -88,7 +88,7 @@ void appMain()
     uint8_t dummy = 0x00;
     uint8_t uart_buffer[16];
 
-    // if (start_main) {
+   if (start_main) {
     
     // DEBUG_PRINT("[DEBUG] Waiting for UART message...\n");
     while (dummy != 0xBC)
@@ -174,8 +174,8 @@ void appMain()
       // DEBUG_PRINT("[DEBUG] Conversion to uint32 worked? %lu\n", x);  
       // velocity control
       // Query position of our target
-      if (peerLocalizationIsIDActive(peer_id))
-      {
+      // if (peerLocalizationIsIDActive(peer_id))
+      // {
       // peerLocalizationOtherPosition_t* target = peerLocalizationGetPositionByID(peer_id);
 
       // target_pos = mkvec(target->pos.x, target->pos.y, target->pos.z);
