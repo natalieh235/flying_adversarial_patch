@@ -35,7 +35,12 @@ PI_L2 char *buff;
 
 PI_L2 char *croppedImg;
 PI_L2 char *outputNN;
-char* L2_memory_buffer;
+PI_L2 char* L2_memory_buffer;
+PI_L2 int32_t vi1;
+PI_L2 int32_t vi2;
+PI_L2 int32_t vi3;
+PI_L2 int32_t vi4;
+PI_L2 uint8_t crc;
 
 static struct pi_device camera;
 static volatile int done;
@@ -53,7 +58,13 @@ static int activations_input;
 
 #define FLASH_BUFF_SIZE 128
 static uint8_t flashBuffer[FLASH_BUFF_SIZE];
-char* L2_output;
+PI_L2 char* L2_output;
+
+
+// #define VERBOSE 0
+
+//uart
+static struct pi_device uart;
 
 // filesystem management functions
 void open_filesystem_and_ram(struct pi_device *flash, struct pi_device *fs)
@@ -90,15 +101,15 @@ void open_filesystem_and_ram(struct pi_device *flash, struct pi_device *fs)
 
 void cropImage(char *imgBuff, char *L2_input_buffer)
 {
-  printf("set offset...\n");
+//   printf("set offset...\n");
   uint32_t offset = 35;
-  printf("done\n");
-  printf("new pointer to begining of network input buffer\n");
+//   printf("done\n");
+//   printf("new pointer to begining of network input buffer\n");
 
   char *curr_adr = L2_input_buffer;
-  printf("current adress: %d\n", (uint32_t)curr_adr);
-  printf("done\n");
-  printf("Entering loop...\n");
+//   printf("current adress: %d\n", (uint32_t)curr_adr);
+//   printf("done\n");
+//   printf("Entering loop...\n");
   for (uint8_t idx_h = 0; idx_h <97; idx_h++)
   {
     // printf("Debug cropImage: idx: %d\n", idx_h);
@@ -109,7 +120,7 @@ void cropImage(char *imgBuff, char *L2_input_buffer)
     offset += 162;
     curr_adr += 160 * sizeof(char);
   }
-  printf("done loop\n");
+//   printf("done loop\n");
 }
 
 static void handle_transfer_end(void *arg)
@@ -149,6 +160,23 @@ static int open_camera(struct pi_device *device)
     return 0;
 }
 
+static int open_uart(struct pi_device *device)
+{
+    struct pi_uart_conf conf;
+    pi_uart_conf_init(&conf);
+    conf.baudrate_bps = 115200;
+
+    pi_open_from_conf(&uart, &conf);
+    if (pi_uart_open(&uart))
+    {
+        printf("[UART] open failed !\n");
+        pmsis_exit(-1);
+    }
+
+    return 0;
+
+}
+
 
 int prediction_task(void)
 {
@@ -162,6 +190,29 @@ int prediction_task(void)
         printf("Failed to open camera\n");
         pmsis_exit(-1);
     }
+
+    // Open UART
+    #ifndef VERBOSE
+    if (open_uart(&uart))
+    {
+        printf("Failed to open uart\n");
+        pmsis_exit(-1);
+    }else
+    {
+        printf("UART initialized!\n");
+    }
+    #endif
+    
+    static PI_L2 uint32_t value;
+    // static PI_L2 uint32_t magic;
+    value = 0xff;
+    pi_uart_write(&uart, &value, 1);
+
+
+
+    // char testint=0x05;
+    // pi_uart_write(&uart, &testint, sizeof(char));
+    // pi_uart_write(&uart, "t", 1);
 
     /*
     Opening of Filesystem and Ram
@@ -191,16 +242,18 @@ int prediction_task(void)
         rdDone += size / sizeof(char);
     }
 
-    char* L2_memory_buffer;
+    // char* L2_memory_buffer;
     char* L2_input;
     L2_memory_buffer = pi_l2_malloc((uint32_t) 380000);
     int begin_end = 1;
-    L2_input = L2_memory_buffer + (1 - begin_end) * (380000 - rdDone);
-    L2_output = pi_l2_malloc((uint32_t) 4);
-    printf("L2_input adress: %p\n", L2_input);
-    printf("L2_output adress: %p\n", L2_output);
+    L2_input = L2_memory_buffer; //+ (1 - begin_end) * (380000 - rdDone);
+    L2_output = pi_l2_malloc((int32_t) 4);
+    // #ifdef VERBOSE
+    // printf("L2_input adress: %p\n", L2_input);
+    // printf("L2_output adress: %p\n", L2_output);
 
-    printf("\nL2 Buffer alloc initial\t@ 0x%08x:\t%s\n", (unsigned int)L2_memory_buffer, L2_memory_buffer?"Ok":"Failed");
+    // printf("\nL2 Buffer alloc initial\t@ 0x%08x:\t%s\n", (unsigned int)L2_memory_buffer, L2_memory_buffer?"Ok":"Failed");
+    // #endif
     /*
     Allocation
 */
@@ -219,29 +272,41 @@ int prediction_task(void)
     croppedImg = (unsigned char *)pmsis_l2_malloc(96*160*sizeof(unsigned char));
     if (croppedImg == NULL){ return -1;}
 
-    outputNN = (char *)pmsis_l2_malloc(4*sizeof(uint32_t));
-    if (outputNN == NULL){ return -1;}
+    // outputNN = (char *)pmsis_l2_malloc(4*sizeof(uint32_t));
+    // if (outputNN == NULL){ return -1;}
 
-    // buff_demosaick = pmsis_l2_malloc(BUFF_SIZE);
-    // if (buff_demosaick == NULL){ return -1;}
+    
+    #ifdef VERBOSE
     printf("Initialized buffers\n");
+    #endif
 
     while(1)
     {
+        // value = 0xff;
+        // pi_uart_write(&uart, &value, 1);
+        #ifdef VERBOSE
         printf("Entering loop...\n");
         // Start the camera
         printf("Start camera...\n");
+        #endif
         pi_camera_control(&camera, PI_CAMERA_CMD_START, 0);
+        #ifdef VERBOSE
         printf("Finished starting camera!\n");
 
         printf("Capturing image...\n");
+        #endif
         pi_camera_capture(&camera, buff, BUFF_SIZE);
+        #ifdef VERBOSE
         printf("Finished!\n");
 
         // Stop the camera and immediately close it
         printf("Stopping camera...\n");
+        #endif
         pi_camera_control(&camera, PI_CAMERA_CMD_STOP, 0);
-        printf("Finished!\n");
+        // value = 0x00;
+        // pi_uart_write(&uart, &value, 1);
+        // #ifdef VERBOSE
+        // printf("Finished!\n");
         // printf("Closing camera...\n");
         // pi_camera_close(&camera);
         // printf("Finished!\n");
@@ -249,9 +314,9 @@ int prediction_task(void)
         // memcpy(L2_memory_buffer, croppedImg, sizeof(croppedImg));
         // printf("\nL2 Buffer alloc initial\t@ 0x%08x:\t%s\n", (unsigned int)L2_memory_buffer, L2_memory_buffer?"Ok":"Failed");
 
-        // begin_end = 1;
+        begin_end = 1;
         // printf("PART1\n");
-        // network_run(L2_memory_buffer, 380000, L2_output, begin_end, ram);
+        network_run(L2_memory_buffer, 380000, L2_output, begin_end, ram);
         // printf("Network Output: ");
         // // cpxPrintToConsole(LOG_TO_CRTP, "Network Output: ");
         // for(int i = 0; i < 16; i+=4)
@@ -265,36 +330,82 @@ int prediction_task(void)
         // ("Second round, re-write from RAM to beginning of L2_buffer:\n");
         // pi_ram_read(&ram, activations_input, L2_input, 15360);
 
-        printf("PART2\n");
-        begin_end = 1;
+        // printf("PART2\n");
+        // #endif
+        // begin_end = 1;
         // printf("Second round, re-write from camera to beginning of L2_buffer:\n");
         // pi_ram_read(&ram, activations_input, L2_input, 15360);
 
+        #ifdef VERBOSE
         printf("Cropping image...\n");
-        cropImage(buff, croppedImg);
+        #endif
+        // cropImage(buff, croppedImg);
+        // value = 0x01;
+        // pi_uart_write(&uart, &value, 1);
+        #ifdef VERBOSE
         printf("Finished!\n");
-        memcpy(L2_input, croppedImg, 15360);
+        #endif
+        // memcpy(L2_input, croppedImg, 15360);
+        // value = 0x02;
+        // pi_uart_write(&uart, &value, 1);
+        #ifdef VERBOSE
         printf("Copy finished!\n");
-        network_run(L2_memory_buffer, 380000, L2_output, begin_end, ram);
-        printf("Network Output: ");
+        #endif
+        // network_run(L2_memory_buffer, 380000, L2_output, begin_end, ram);
+        // value = 0x03;
+        // pi_uart_write(&uart, &value, 1);
+        // #ifdef VERBOSE
+        // printf("Network Output: ");
+        // #endif
         // cpxPrintToConsole(LOG_TO_CRTP, "Network Output: ");
         // for(int i = 0; i < 16; i+=4)
         // {
         // printf("%d ", *(int32_t *)(L2_output + i));
-        int32_t vi1 =  *(int32_t *)(L2_output + 0);
-        printf("X: %f\n", (float)vi1 * 2.46902e-05 + 1.02329e+00);
-        int32_t vi2 =  *(int32_t *)(L2_output + 4);
-        printf("Y: %f\n", (float)vi2 * 2.46902e-05 + 7.05523e-04);
-        int32_t vi3 =  *(int32_t *)(L2_output + 8);
-        printf("Z: %f\n", (float)vi3 * 2.46902e-05 + 2.68245e-01);
-        int32_t vi4 =  *(int32_t *)(L2_output + 12);
-        printf("Phi: %f\n", (float)vi4 * 2.46902e-05 + 5.60173e-04);
+        vi1 =  *(int32_t *)(L2_output + 0);
+        // printf("X: %f\n", (float)vi1 * 2.46902e-05 + 1.02329e+00);
+        vi2 =  *(int32_t *)(L2_output + 4);
+        // printf("Y: %f\n", (float)vi2 * 2.46902e-05 + 7.05523e-04);
+        vi3 =  *(int32_t *)(L2_output + 8);
+        // printf("Z: %f\n", (float)vi3 * 2.46902e-05 + 2.68245e-01);
+        vi4 =  *(int32_t *)(L2_output + 12);
+        // printf("Phi: %f\n", (float)vi4 * 2.46902e-05 + 5.60173e-04);
+
+        // char send[40];
+        // sprintf(send, "X %f, Y %f, Z %f, PHI %f", (float)vi1 * 2.46902e-05 + 1.02329e+00, (float)vi2 * 2.46902e-05 + 7.05523e-04, (float)vi3 * 2.46902e-05 + 2.68245e-01, (float)vi4 * 2.46902e-05 + 5.60173e-04);
+        static PI_L2 uint8_t magic = 0xBC;
+        static PI_L2 uint8_t length = sizeof(int32_t)*4;
+        pi_uart_write(&uart, &magic, 1);
+        pi_uart_write(&uart, &length, 1);
+        pi_uart_write(&uart, L2_output, 4*sizeof(int32_t));
+        
+        // compute crc
+        crc = 0;
+        for (const uint8_t* p = (uint8_t*)L2_output; p < (uint8_t*)L2_output + length; p++) {
+            crc ^= *p;
+        }
+        pi_uart_write(&uart, crc, 1);
+        // pi_uart_write(&uart, &crc, 1);
+
+        // pi_uart_write(&uart, 0xFF, 1);
+        // printf("Send via uart.... ");
+        // pi_uart_write(&uart, *L2_output, sizeof(uint32_t)*4);
+        // pi_uart_write(&uart, "\n", sizeof(char)*2);
+        // printf("Finished? %d", errno);
+        // printf("Continue...");
+        // pi_uart_write(&uart, &vi1, sizeof(vi1));
+        // pi_uart_write(&uart, &vi2, sizeof(vi2));
+        // pi_uart_write(&uart, &vi3, sizeof(vi3));
+        // pi_uart_write(&uart, &vi4, sizeof(vi4));
+        
         // cpxPrintToConsole(LOG_TO_CRTP, "%d", *(int32_t *)(L2_output + i));
         // }
+        #ifdef VERBOSE
         printf("\n");
 
         printf("Waiting...\n");
-        pi_time_wait_us(2000000);
+        #endif
+        pi_ram_read(&ram, activations_input, L2_input, 15360);
+        // pi_time_wait_us(2000000);
         
     }
 
