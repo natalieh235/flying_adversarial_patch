@@ -16,6 +16,8 @@
 #include "param.h"
 #include "math3d.h"
 
+#include "uart1.h"
+#include "debug.h"
 
 #define DEBUG_MODULE "APP"
 
@@ -30,6 +32,8 @@ float max_velo_v = 1.0f;
 
 struct vec target_pos;
 float target_yaw;
+
+const uint32_t baudrate_esp32 = 115200;
 
 // helper for calculating the angle between two vectors
 float calcAngleBetweenVectors(struct vec vec1, struct vec vec2)
@@ -73,21 +77,111 @@ void appMain()
   logVarId_t idYEstimate = logGetVarId("stateEstimate", "y");
   logVarId_t idZEstimate = logGetVarId("stateEstimate", "z");
 
+  // init UART
+  DEBUG_PRINT("[DEBUG] Init UART...\n");
+  uart1Init(baudrate_esp32);
+  DEBUG_PRINT("[DEBUG] done!\n");
 
   while(1) {
     vTaskDelay(M2T(10));
 
-    if (peerLocalizationIsIDActive(peer_id) && start_main) {
+    uint8_t dummy = 0x00;
+    uint8_t uart_buffer[16];
+
+    // if (start_main) {
+    
+    // DEBUG_PRINT("[DEBUG] Waiting for UART message...\n");
+    while (dummy != 0xBC)
+    {
+      uart1GetDataWithDefaultTimeout((uint8_t*)&dummy);
+    }
+    // DEBUG_PRINT("[DEBUG] Got package from !\n");
+    
+    uart1GetDataWithDefaultTimeout((uint8_t*)&dummy);
+    uint8_t length = dummy;
+    if (length == sizeof(uart_buffer))
+    {
+      for (uint8_t i = 0; i < length+1; i++)
+      {
+        uart1GetDataWithDefaultTimeout((uint8_t*)&uart_buffer[i]);
+      }
+
+      // DEBUG_PRINT("[DEBUG] Read package from UART!:\n");
+      for (uint8_t i = 0; i < length; i++)
+      {
+        // DEBUG_PRINT("%02X", uart_buffer[i]);
+      }
+      // DEBUG_PRINT("\n");
+    }    
 
       p_D.x = logGetFloat(idXEstimate);
       p_D.y = logGetFloat(idYEstimate);
       p_D.z = logGetFloat(idZEstimate);
 
+      double x_d = 0;
+      double y_d = 0;
+      double z_d = 0;
+      double phi_d = 0;
+
+      uint32_t x = (uart_buffer[3] << 24) | (uart_buffer[2] << 16) | (uart_buffer[1] << 8) | uart_buffer[0];
+
+      if (uart_buffer[3]>=0xF0)
+      {
+         x_d = (-(double)~x) * 2.46902e-05 + 1.02329e+00;
+      }
+      else
+      {
+         x_d = (double)x * 2.46902e-05 + 1.02329e+00;
+      }
+      
+
+
+      uint32_t y = (uart_buffer[7] << 24) | (uart_buffer[6] << 16) | (uart_buffer[5] << 8) | uart_buffer[4];
+      if (uart_buffer[7]>=0xF0)
+      {
+         y_d = (-(double)~y) * 2.46902e-05 + 7.05523e-04;
+      }
+      else
+      {
+         y_d = (double)y * 2.46902e-05 + 7.05523e-04;
+      }
+
+
+      uint32_t z = (uart_buffer[11] << 24) | (uart_buffer[10] << 16) | (uart_buffer[9] << 8) | uart_buffer[8];
+      if (uart_buffer[11]>=0xF0)
+      {
+         z_d = (-(double)~z) * 2.46902e-05 + 2.68245e-01;
+      }
+      else
+      {
+         z_d = (double)z * 2.46902e-05 + 2.68245e-01;
+      }
+
+
+      uint32_t phi = (uart_buffer[15] << 24) | (uart_buffer[14] << 16) | (uart_buffer[13] << 8) | uart_buffer[12];
+      if (uart_buffer[15]>=0xF0)
+      {
+         phi_d = (-(double)~phi) * 2.46902e-05 + 5.60173e-04;
+      }
+      else
+      {
+         phi_d = (double)phi * 2.46902e-05 + 5.60173e-04;
+      }
+
+      // DEBUG_PRINT("[DEBUG] Conversion worked?: %ld, %ld, %ld, %ld\n", x, y, z, phi);
+      DEBUG_PRINT("[DEBUG] Received coordinates: %f, %f, %f, %f\n", x_d, y_d, z_d, phi_d);
+
+      // DEBUG_PRINT("[DEBUG] Conversion to uint32 worked? %lu\n", x);  
       // velocity control
       // Query position of our target
-      peerLocalizationOtherPosition_t* target = peerLocalizationGetPositionByID(peer_id);
-      target_pos = mkvec(target->pos.x, target->pos.y, target->pos.z);
-      target_yaw = target->yaw;
+      if (peerLocalizationIsIDActive(peer_id))
+      {
+      // peerLocalizationOtherPosition_t* target = peerLocalizationGetPositionByID(peer_id);
+
+      // target_pos = mkvec(target->pos.x, target->pos.y, target->pos.z);
+      // target_yaw = target->yaw;
+      target_pos = mkvec((float)x_d, (float)y_d, (float)z_d);
+      target_yaw = (float)phi_d;
 
       // z is kept at same height as target
       setpoint.mode.z = modeAbs;
@@ -148,7 +242,7 @@ void appMain()
 
       // update current position
       //p_D = p_D_prime;
-
+      //}//end debug if
 
       }//end if
   }//end while
