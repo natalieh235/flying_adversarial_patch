@@ -21,7 +21,7 @@ APP = main
 APP_SRCS := $(wildcard DORY_network/src/*.c)
 
 ifndef CORE
-CORE=2
+CORE=4
 else
 CORE= $(CORE)
 endif
