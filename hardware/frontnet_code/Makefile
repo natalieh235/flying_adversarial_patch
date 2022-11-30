@@ -14,21 +14,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-io=uart
+# io=uart
 PMSIS_OS ?= pulp_os
 APP = main
 
 APP_SRCS := $(wildcard DORY_network/src/*.c)
 
 ifndef CORE
-CORE=1
+CORE=4
 else
 CORE= $(CORE)
 endif
 
 APP_CFLAGS += -DNUM_CORES=$(CORE) -DGAP_SDK=1 -IDORY_network/inc -O3 -w -fno-tree-loop-distribute-patterns -flto
 APP_LDFLAGS += -lm -flto
-APP_CFLAGS += -DVERBOSE=1
+# APP_CFLAGS += -DVERBOSE=0
 
 
 FLASH_FILES = DORY_network/BNReluConvolution0_weights.hex
