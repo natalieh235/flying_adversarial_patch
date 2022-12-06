@@ -66,6 +66,19 @@ PI_L2 char* L2_output;
 //uart
 static struct pi_device uart;
 
+static void set_register(uint32_t reg_addr, uint8_t value)
+{
+  uint8_t set_value = value;
+  // uint8_t get_value;
+  pi_camera_reg_set(&camera, reg_addr, &set_value);
+  // pi_time_wait_us(1000000);
+  // pi_camera_reg_get(&camera, reg_addr, &get_value);
+  // if (set_value != get_value)
+  // {
+  //   cpxPrintToConsole(LOG_TO_CRTP, "Failed to set camera register %d\n", reg_addr);
+  // }
+}
+
 // filesystem management functions
 void open_filesystem_and_ram(struct pi_device *flash, struct pi_device *fs)
 {
@@ -156,6 +169,42 @@ static int open_camera(struct pi_device *device)
     pi_camera_control(&camera, PI_CAMERA_CMD_STOP, 0);
 
     pi_camera_control(device, PI_CAMERA_CMD_AEG_INIT, 0);
+
+  uint8_t aeg = 0x01;
+  uint8_t aGain = 4;
+  uint8_t dGain = 1;
+  uint16_t exposure = 400;
+
+   set_register(0x2100, aeg);  // AE_CTRL
+
+      switch(aGain) {
+        case 8:
+          set_register(0x0205, 0x30);
+          break;
+        case 4:
+          set_register(0x0205, 0x20);
+          break;
+        case 2:
+          set_register(0x0205, 0x10);
+          break;
+        case 1:
+        default:
+          set_register(0x0205, 0x00);
+          break;
+      }
+
+      set_register(0x020E, (dGain >> 6)); // 2.6 int part
+      set_register(0x020F, dGain & 0x3F); // 2.6 float part
+
+      
+      if (exposure < 2) {
+        exposure = 2;
+      }
+      if (exposure > 0x0216 - 2) {
+        exposure = 0x0216 - 2;
+      }
+      set_register(0x0202, (exposure >> 8) & 0xFF);    // INTEGRATION_H
+      set_register(0x0203, exposure & 0xFF);    // INTEGRATION_L
 
     return 0;
 }
@@ -361,13 +410,13 @@ int prediction_task(void)
         // for(int i = 0; i < 16; i+=4)
         // {
         // printf("%d ", *(int32_t *)(L2_output + i));
-        vi1 =  *(int32_t *)(L2_output + 0);
+        // vi1 =  *(int32_t *)(L2_output + 0);
         // printf("X: %f\n", (float)vi1 * 2.46902e-05 + 1.02329e+00);
-        vi2 =  *(int32_t *)(L2_output + 4);
+        // vi2 =  *(int32_t *)(L2_output + 4);
         // printf("Y: %f\n", (float)vi2 * 2.46902e-05 + 7.05523e-04);
-        vi3 =  *(int32_t *)(L2_output + 8);
+        // vi3 =  *(int32_t *)(L2_output + 8);
         // printf("Z: %f\n", (float)vi3 * 2.46902e-05 + 2.68245e-01);
-        vi4 =  *(int32_t *)(L2_output + 12);
+        // vi4 =  *(int32_t *)(L2_output + 12);
         // printf("Phi: %f\n", (float)vi4 * 2.46902e-05 + 5.60173e-04);
 
         // char send[40];

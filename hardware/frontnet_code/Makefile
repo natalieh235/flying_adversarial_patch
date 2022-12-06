@@ -28,7 +28,7 @@ endif
 
 APP_CFLAGS += -DNUM_CORES=$(CORE) -DGAP_SDK=1 -IDORY_network/inc -O3 -w -fno-tree-loop-distribute-patterns -flto
 APP_LDFLAGS += -lm -flto
-# APP_CFLAGS += -DVERBOSE=0
+# APP_CFLAGS += -DVERBOSE=1
 
 
 FLASH_FILES = DORY_network/BNReluConvolution0_weights.hex
