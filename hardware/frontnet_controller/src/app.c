@@ -87,6 +87,7 @@ void appMain()
   uart1Init(baudrate_esp32);
   DEBUG_PRINT("[DEBUG] done!\n");
 
+  int32_t count = 0;
   while(1) {
     vTaskDelay(M2T(10));
 
@@ -94,14 +95,15 @@ void appMain()
     uint8_t uart_buffer[16];
 
   //  if (start_main) {
-     DEBUG_PRINT("[DEBUG] Start main...\n");
-    
-    DEBUG_PRINT("[DEBUG] Waiting for UART message...\n");
+    // DEBUG_PRINT("[DEBUG] Start main...\n");
+
+    // DEBUG_PRINT("[DEBUG] Waiting for UART message...\n");
+
     while (dummy != 0xBC)
     {
       uart1Getchar((uint8_t*)&dummy);
     }
-    DEBUG_PRINT("[DEBUG] Got package from !\n");
+    // DEBUG_PRINT("[DEBUG] Got package from !\n");
     
     uart1Getchar((uint8_t*)&dummy);
     uint8_t length = dummy;
@@ -112,12 +114,12 @@ void appMain()
         uart1Getchar((uint8_t*)&uart_buffer[i]);
       }
 
-      DEBUG_PRINT("[DEBUG] Read package from UART!:\n");
-      for (uint8_t i = 0; i < length; i++)
-      {
-        DEBUG_PRINT("%02X", uart_buffer[i]);
-      }
-      DEBUG_PRINT("\n");
+      // DEBUG_PRINT("[DEBUG] Read package from UART!:\n");
+      // for (uint8_t i = 0; i < length; i++)
+      // {
+      //   // DEBUG_PRINT("%02X", uart_buffer[i]);
+      // }
+      // DEBUG_PRINT("\n");
     }    
 
       // evtl. Schleife für UART Daten empfangen von Rest des Controller trennen
@@ -138,7 +140,7 @@ void appMain()
       phi_d = (float)phi * 2.46902e-05f + 5.60173e-04f;
 
       // DEBUG_PRINT("[DEBUG] Conversion worked?: %ld, %ld, %ld, %ld\n", x, y, z, phi);
-      DEBUG_PRINT("[DEBUG] Received coordinates: %f, %f, %f, %f\n", (double)x_d, (double)y_d, (double)z_d, (double)phi_d);
+      // DEBUG_PRINT("[DEBUG] Received coordinates: %f, %f, %f, %f\n", (double)x_d, (double)y_d, (double)z_d, (double)phi_d);
 
       // DEBUG_PRINT("[DEBUG] Conversion to uint32 worked? %lu\n", x);  
       // velocity control
@@ -159,7 +161,7 @@ void appMain()
       target_yaw = atan2f(target_drone_global.y, target_drone_global.x);
 
       setpoint.mode.yaw = modeAbs;
-      setpoint.attitude.yaw = degrees(target_yaw);
+      setpoint.attitude.yaw = 0.0f ;//degrees(target_yaw);
      
       // target_yaw = phi_d;
 
@@ -226,7 +228,8 @@ void appMain()
       setpoint.position.x = clamp(setpoint.position.x, -0.8f, 0.8f);
       setpoint.position.y = clamp(setpoint.position.y, -0.8f, 0.8f);
       setpoint.position.z = clamp(setpoint.position.z, 0.0f, 2.0f);
-
+      count++;
+      DEBUG_PRINT("[DEBUG] Received total: %ld\n", count);
       if (start_main) {
       commanderSetSetpoint(&setpoint, 3);
 
