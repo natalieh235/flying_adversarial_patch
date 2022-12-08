@@ -147,3 +147,12 @@ make clean all run CORE=8 platform=gvsoc
 ```
 
 
+### ROS2 package
+
+## ROS2 Package
+
+Use a symlink to your ROS2 workspace
+
+```
+ln -s <path-to>/adverserial_frontnet/hardware/frontnet_ros <path-to>/ros2_workspace/src
+```
