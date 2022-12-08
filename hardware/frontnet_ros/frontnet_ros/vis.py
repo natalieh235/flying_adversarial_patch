@@ -1,8 +1,10 @@
 from functools import partial
 import numpy as np
+import os
 
 import rclpy
 from rclpy.node import Node
+from ament_index_python.packages import get_package_share_directory
 
 from crazyflie_interfaces.msg import LogDataGeneric
 
@@ -44,11 +46,15 @@ class VisualizationNode(Node):
     def __init__(self):
         super().__init__('vis')
 
+        crazyflies_stl = os.path.join(
+            get_package_share_directory('frontnet_ros'),
+            'data',
+            'cf2.stl')
+
         print(self.get_topic_names_and_types())
 
-        cfs = ['cf5', 'cf6']
-        self.cfs = cfs
-        
+        self.cf = "cf231"
+
         # initalize meshcat
         self.vis = mc.Visualizer()
         self.vis.open()
@@ -60,22 +66,11 @@ class VisualizationNode(Node):
         self.vis["/Cameras/default/rotated/<object>"].set_transform(
             mctf.translation_matrix([1, 0, 0]))
 
-        # for each crazyflie, generate a 3D model, a sphere, and a hyperplane
-        for cf in cfs:
-            model = mcg.StlMeshGeometry.from_file("/home/whoenig/projects/crazyflie/crazyswarm2/src/coltrans_ros/coltrans_ros/cf2.stl")
-            self.vis["{}_model".format(cf)].set_object(model)
+        # for crazyflie, generate a 3D model
+        model = mcg.StlMeshGeometry.from_file(crazyflies_stl)
+        self.vis["{}_model".format(self.cf)].set_object(model)
 
-            sphere = mcg.Mesh(mcg.Sphere(0.1), 
-                            material=mcg.MeshBasicMaterial(
-                                opacity=0.05,
-                                color=0x000000))
-            self.vis["{}_sphere".format(cf)].set_object(sphere)
-
-            hp = mcg.Mesh(Plane(), 
-                            material=mcg.MeshBasicMaterial(
-                                opacity=0.5,
-                                color=0xff0000))
-            self.vis["{}_hp".format(cf)].set_object(hp)
+        # for the 
 
 
         # for the payload set
