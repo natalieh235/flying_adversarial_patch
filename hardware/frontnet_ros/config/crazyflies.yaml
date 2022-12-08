@@ -5,7 +5,19 @@ robots:
     uri: radio://0/60/2M/E7E7E7E7E7    ## CHANGED!
     initial_position: [0.0, 0.0, 0.0] #z=0.15
     type: cf21_mocap_deck  # see robot_types
-    # firmware_params:
+    firmware_params:
+      pid_attitude:
+        yaw_kp: 3.0 # 6.0
+        yaw_kd: 1.5 #0.35
+        yaw_ki: 1.0 #1.0
+      posCtlPid:
+        xKp: 1.0 # 2.0
+        xKd: 0.2 # 0.0
+        xVelMax: 0.5 # 1.0
+        yKp: 1.0 # 2.0
+        yKd: 0.2 # 0.0
+        yVelMax: 0.5 # 1.0
+
     #   kalman:
     #     pNAcc_xy: 1.0 # default 0.5
     firmware_logging:

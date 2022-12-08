@@ -15,7 +15,7 @@ class VisualizationNode(Node):
         self.cf = "cf231"
 
         self.publisher = self.create_publisher(
-                PoseStamped, "{}/frontnet_targetpos_typed", 10)
+                PoseStamped, "{}/frontnet_targetpos_typed".format(self.cf), 10)
 
         self.subscription1 = self.create_subscription(
             LogDataGeneric,
@@ -36,10 +36,10 @@ class VisualizationNode(Node):
         msg2.pose.position.x = msg.values[0]
         msg2.pose.position.y = msg.values[1]
         msg2.pose.position.z = msg.values[2]
-        msg2.pose.orientation.x = 0
-        msg2.pose.orientation.y = 0
-        msg2.pose.orientation.z = 0
-        msg2.pose.orientation.w = 1
+        msg2.pose.orientation.x = 0.0
+        msg2.pose.orientation.y = 0.0
+        msg2.pose.orientation.z = 0.0
+        msg2.pose.orientation.w = 1.1
         self.publisher.publish(msg2)
 
 

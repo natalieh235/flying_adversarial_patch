@@ -22,7 +22,7 @@
 #define DEBUG_MODULE "APP"
 
 
-const float distance = 0.5;  // distance between UAV and target in m
+const float distance = 1.0;  // distance between UAV and target in m
 const float angle = 0.0;   // angle between UAV and target
 const float tau = 1/100.0; // update rate
 
@@ -161,7 +161,7 @@ void appMain()
       target_yaw = atan2f(target_drone_global.y, target_drone_global.x);
 
       setpoint.mode.yaw = modeAbs;
-      setpoint.attitude.yaw = 0.0f ;//degrees(target_yaw);
+      setpoint.attitude.yaw = degrees(target_yaw);
      
       // target_yaw = phi_d;
 
@@ -181,9 +181,9 @@ void appMain()
       // angle is set to the current yaw angle (rad) of the target
 
       p_D_prime = vadd(target_pos, e_H_delta);
-      setpoint.position.x = 0.0f;//p_D_prime.x;
-      setpoint.position.y = 0.0f;//p_D_prime.y;
-      setpoint.position.z = 1.4f;//p_D_prime.z;
+      setpoint.position.x = p_D_prime.x;
+      setpoint.position.y = p_D_prime.y;
+      setpoint.position.z = 0.5f;//p_D_prime.z;
 
       // velocity control -> produces oscillation of the CF in x and y direction
       // // eq 7
