@@ -61,19 +61,17 @@ void appMain()
 {
 
   static setpoint_t setpoint;
+  setpoint.mode.x = modeAbs;
+  setpoint.mode.y = modeAbs;
+  setpoint.mode.z = modeAbs;
+  setpoint.mode.yaw = modeAbs;
   
   struct vec p_D = vzero();  // current position
   struct vec p_D_prime = vzero(); // next position
 
-  // struct vec e_D = vzero(); // heading vector of UAV
   struct vec e_H_delta = vzero(); // heading vector of target multiplied by safety distance
   
-  // struct vec v_D = vzero(); // velocity of UAV
-  
   float estYawRad;  // estimate of current yaw angle
-  //float theta_prime_D; // angle between current UAV heading and desired heading
-  //float theta_D; // angle between current UAV heading and last heading
-  // float omega_prime_D; // attitude rate
 
 
   logVarId_t idStabilizerYaw = logGetVarId("stabilizer", "yaw");
@@ -87,157 +85,85 @@ void appMain()
   uart1Init(baudrate_esp32);
   DEBUG_PRINT("[DEBUG] done!\n");
 
-  int32_t count = 0;
   while(1) {
     vTaskDelay(M2T(10));
 
+    // Receive UART packages from the AI Deck 
     uint8_t dummy = 0x00;
     uint8_t uart_buffer[16];
-
-  //  if (start_main) {
-    // DEBUG_PRINT("[DEBUG] Start main...\n");
-
-    // DEBUG_PRINT("[DEBUG] Waiting for UART message...\n");
-
+    
+    // wait until magic byte is received
     while (dummy != 0xBC)
     {
       uart1Getchar((uint8_t*)&dummy);
     }
-    // DEBUG_PRINT("[DEBUG] Got package from !\n");
     
     uart1Getchar((uint8_t*)&dummy);
     uint8_t length = dummy;
+    // if the next byte is transmitting the correct length, proceed reading the message
     if (length == sizeof(uart_buffer))
     {
       for (uint8_t i = 0; i < length+1; i++)
       {
         uart1Getchar((uint8_t*)&uart_buffer[i]);
       }
+    }
 
-      // DEBUG_PRINT("[DEBUG] Read package from UART!:\n");
-      // for (uint8_t i = 0; i < length; i++)
-      // {
-      //   // DEBUG_PRINT("%02X", uart_buffer[i]);
-      // }
-      // DEBUG_PRINT("\n");
-    }    
+    //TODO: implement crc check    
 
-      // evtl. Schleife für UART Daten empfangen von Rest des Controller trennen
-      // Daten nicht überschreiben, wenn unvollständig übermitteln
+    // get the current 3D coordinate of the UAV
+    p_D.x = logGetFloat(idXEstimate);
+    p_D.y = logGetFloat(idYEstimate);
+    p_D.z = logGetFloat(idZEstimate);
 
-      p_D.x = logGetFloat(idXEstimate);
-      p_D.y = logGetFloat(idYEstimate);
-      p_D.z = logGetFloat(idZEstimate);
+    // calculate the correct float values of the target pose received via UART
+    int32_t x = *(int32_t *)(uart_buffer + 0);
+    int32_t y = *(int32_t *)(uart_buffer + 4);
+    int32_t z = *(int32_t *)(uart_buffer + 8);
+    int32_t phi = *(int32_t *)(uart_buffer + 12);
 
-      int32_t x = *(int32_t *)(uart_buffer + 0);
-      int32_t y = *(int32_t *)(uart_buffer + 4);
-      int32_t z = *(int32_t *)(uart_buffer + 8);
-      int32_t phi = *(int32_t *)(uart_buffer + 12);
+    x_d = (float)x * 2.46902e-05f + 1.02329e+00f;
+    y_d = (float)y * 2.46902e-05f + 7.05523e-04f;
+    z_d = (float)z * 2.46902e-05f + 2.68245e-01f;
+    phi_d = (float)phi * 2.46902e-05f + 5.60173e-04f;
 
-      x_d = (float)x * 2.46902e-05f + 1.02329e+00f;
-      y_d = (float)y * 2.46902e-05f + 7.05523e-04f;
-      z_d = (float)z * 2.46902e-05f + 2.68245e-01f;
-      phi_d = (float)phi * 2.46902e-05f + 5.60173e-04f;
+    target_pos = mkvec(x_d, y_d, z_d);   // target pose in UAV frame
 
-      // DEBUG_PRINT("[DEBUG] Conversion worked?: %ld, %ld, %ld, %ld\n", x, y, z, phi);
-      // DEBUG_PRINT("[DEBUG] Received coordinates: %f, %f, %f, %f\n", (double)x_d, (double)y_d, (double)z_d, (double)phi_d);
+    // translate the target pose in world frame
+    estYawRad = radians(logGetFloat(idStabilizerYaw));    // get the current yaw in degrees
+    struct quat q = rpy2quat(mkvec(0,0,estYawRad));
+    target_pos = vadd(p_D, qvrot(q, target_pos));
 
-      // DEBUG_PRINT("[DEBUG] Conversion to uint32 worked? %lu\n", x);  
-      // velocity control
-      // Query position of our target
-      // if (peerLocalizationIsIDActive(peer_id))
-      // {
-      // peerLocalizationOtherPosition_t* target = peerLocalizationGetPositionByID(peer_id);
+    // calculate the UAV's yaw angle
+    struct vec target_drone_global = vsub(target_pos, p_D);
+    target_yaw = atan2f(target_drone_global.y, target_drone_global.x);
 
-      // target_pos = mkvec(target->pos.x, target->pos.y, target->pos.z);
-      // target_yaw = target->yaw;
-      target_pos = mkvec(x_d, y_d, z_d);
+    
+    setpoint.attitude.yaw = degrees(target_yaw);
+    // z is kept at same height as target
+    // setpoint.position.z = target_pos.z;
 
-      estYawRad = radians(logGetFloat(idStabilizerYaw));    // get the current yaw in degrees
-      struct quat q = rpy2quat(mkvec(0,0,estYawRad));
-      target_pos = vadd(p_D, qvrot(q, target_pos));
+    // eq 6
+    e_H_delta = calcHeadingVec(1.0f*distance, target_yaw-M_PI_F);  // target_yaw was shifted by 180°, correction through -pi
+    // radius is 1 * distance
+    // angle is set to the current yaw angle (rad) of the target
 
-      struct vec target_drone_global = vsub(target_pos, p_D);
-      target_yaw = atan2f(target_drone_global.y, target_drone_global.x);
+    p_D_prime = vadd(target_pos, e_H_delta);
+    setpoint.position.x = p_D_prime.x;
+    setpoint.position.y = p_D_prime.y;
+    setpoint.position.z = 0.5f;           // keep z fixed an low for now, crashes from higher up damage the AI deck
 
-      setpoint.mode.yaw = modeAbs;
-      setpoint.attitude.yaw = degrees(target_yaw);
-     
-      // target_yaw = phi_d;
+    setpoint.velocity_body = false;  // world frame
 
-      // z is kept at same height as target
-      setpoint.mode.z = modeAbs;
-      setpoint.position.z = target_pos.z;
+    // clamp the values to prevent the UAV from flying into the savety net
+    setpoint.position.x = clamp(setpoint.position.x, -0.8f, 0.8f);
+    setpoint.position.y = clamp(setpoint.position.y, -0.8f, 0.8f);
+    setpoint.position.z = clamp(setpoint.position.z, 0.0f, 2.0f);
 
-      // position is handled given position and attitude rate
-
-      setpoint.mode.x = modeAbs;
-      setpoint.mode.y = modeAbs;
-
-
-      // eq 6
-      e_H_delta = calcHeadingVec(1.0f*distance, target_yaw-M_PI_F);//angle); 
-      // radius is 1 * distance
-      // angle is set to the current yaw angle (rad) of the target
-
-      p_D_prime = vadd(target_pos, e_H_delta);
-      setpoint.position.x = p_D_prime.x;
-      setpoint.position.y = p_D_prime.y;
-      setpoint.position.z = 0.5f;//p_D_prime.z;
-
-      // velocity control -> produces oscillation of the CF in x and y direction
-      // // eq 7
-      // struct vec v_H = vzero(); // target velocity, set to 0 since we don't have this information yet
-      // v_D = vdiv(vsub(p_D_prime, p_D), tau);
-      // v_D = vadd(v_D, v_H);
-      // //v_D = vclamp(v_D, vneg(max_velocity), max_velocity); // -> debugging, doesn't preserve the direction of the vector
-      // v_D = vclampnorm(v_D, max_velo_v);
-
-      // setpoint.velocity.x = v_D.x;
-      // setpoint.velocity.y = v_D.y;
-
-
-      // heading control
-      // eq 8
-      // e_D = calcHeadingVec(1.0f, estYawRad);           // radius is 1, angle is current yaw 
-
-      // struct vec target_vector = vsub(p_D, target_pos);
-      // float angle_target = atan2f(target_vector.y, target_vector.x);
-
-      //theta_prime_D = calcAngleBetweenVectors(e_D, vsub(target_pos, p_D));
-      
-      //theta_D = calcAngleBetweenVectors(e_D, vsub(target_pos, p_D_prime));  //estYawRad;
-      
-      // eq 9
-      // omega_prime_D = (theta_prime_D - theta_D) / tau;     // <-- incorrect, the difference does not always provide the shortest angle between the two thetas
-      // omega_prime_D = shortest_signed_angle_radians(estYawRad, angle_target) / tau;
-      // omega_prime_D = clamp(omega_prime_D, -0.8f, 0.8f);
-
-      // setpoint.mode.yaw = modeVelocity;
-      // setpoint.attitudeRate.yaw = degrees(omega_prime_D);
-
-
-      setpoint.velocity_body = false;  // world frame
-
-      // send a new setpoint to the UAV
-      // DEBUG_PRINT("[DEBUG] Setpoint:\n");
-      // DEBUG_PRINT("[DEBUG] x: %f, y: %f, z: %f, ");
-      //       x_limit: [-1.0, 1.0] # m
-      // y_limit: [-1.0, 1.0] # m
-      // z_limit: [0.0, 2.5]
-      setpoint.position.x = clamp(setpoint.position.x, -0.8f, 0.8f);
-      setpoint.position.y = clamp(setpoint.position.y, -0.8f, 0.8f);
-      setpoint.position.z = clamp(setpoint.position.z, 0.0f, 2.0f);
-      count++;
-      DEBUG_PRINT("[DEBUG] Received total: %ld\n", count);
-      if (start_main) {
-      commanderSetSetpoint(&setpoint, 3);
-
-      // update current position
-      //p_D = p_D_prime;
-      //}//end debug if
-
-      }//end if
+    // only update the setpoint as soons as start_main is set to true
+    if (start_main) {
+    commanderSetSetpoint(&setpoint, 3);
+    }//end if
   }//end while
 }//end main
 
@@ -257,7 +183,7 @@ PARAM_ADD_CORE(PARAM_FLOAT, maxvelo, &max_velo_v)
 
 PARAM_GROUP_STOP(frontnet)
 
-// add new log group for local variables
+// log group for local variables
 LOG_GROUP_START(frontnet)
 LOG_ADD(LOG_FLOAT, targetx, &target_pos.x)
 LOG_ADD(LOG_FLOAT, targety, &target_pos.y)
