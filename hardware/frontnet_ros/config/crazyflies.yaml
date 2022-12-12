@@ -4,7 +4,7 @@ robots:
     enabled: true
     uri: radio://0/60/2M/E7E7E7E7E7    ## CHANGED!
     initial_position: [0.0, 0.0, 0.0] #z=0.15
-    type: cf21_mocap_deck  # see robot_types
+    type: cf21_motive #cf21_mocap_deck  # see robot_types
     firmware_params:
       pid_attitude:
         yaw_kp: 3.0 # 6.0
@@ -30,10 +30,10 @@ robots:
           frequency: 10
           vars: ["frontnet.targetx", "frontnet.targety", "frontnet.targetz", "frontnet.targetyaw"]
   cf4:
-    enabled: false
-    uri: radio://0/80/2M/E7E7E7E7E7
+    enabled: true
+    uri: radio://0/60/2M/E7E7E7E704
     initial_position: [0, -0.5, 0]
-    type: cf21  # see robot_types
+    type: cf21_motive  # see robot_types
     # firmware_params:
     #   kalman:
     #     pNAcc_xy: 1.0 # default 0.5
@@ -79,6 +79,10 @@ robot_types:
     # firmware_params:
     #   kalman:
     #     pNAcc_xy: 1.0 # default 0.5
+  cf21_motive:
+    motion_capture:
+      enabled: false
+
 # global settings for all robots
 all:
   # firmware logging for all drones (use robot_types/type_name to set per type, or

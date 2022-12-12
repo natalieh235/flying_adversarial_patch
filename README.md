@@ -92,7 +92,81 @@ We have calculated the l2 distance between the manually set points stored in the
 You can follow the main method in `adversarial_frontnet/camera_calibration/camera_calibration.py` to calculate the camera intrinsics, rotation and translation matrix and the distortion coefficients needed for projecting pixels. Additionally, you can load these values from the yaml file, provided in the same folder.
 
 ## Hardware
-### Generate C code and flashable image of quantized Frontnet
+### Prerequisites:
+* [Crazyflie 2.1](https://store.bitcraze.io/products/crazyflie-2-1)
+* [Crazyradio PA 2.4 GHz](https://store.bitcraze.io/products/crazyradio-pa)
+* [AI Deck 1.1](https://store.bitcraze.io/products/ai-deck-1-1?variant=32485907890263)
+* JTAG Debugger with 10-pin-connector
+* Gamepad/Controller (e.g. XBox 360 USB Controller)
+* [Install Crazyflie Client](https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/installation/install/)
+* [Install docker](https://docs.docker.com/desktop/install/ubuntu/)
+* [Install ros2 galactic](https://docs.ros.org/en/galactic/Installation.html)
+
+For flying, the UAVs need to be aware of their current state estimates. This information is either provided through a motion capture system or the [Crazyflie FlowDeck v2](https://store.bitcraze.io/collections/decks/products/flow-deck-v2). State estimates provided by the FlowDeck are most likely more inaccurate than the pose information provided by a motion capture system.
+
+### [Crazyswarm 2](https://imrclab.github.io/crazyswarm2/index.html)
+For improved control of the UAVs, we'll utilize Crazyswarm 2.
+#### Install dependencies:
+```bash
+$ sudo apt install libboost-program-options-dev libusb-1.0-0-dev
+$ python -m pip install rowan 
+# install python package rowan into your current python environment 
+```
+#### Set up your ros2 workspace:
+Create a ros2 workspace. For ease of use, this folder can be placed in e.g. your home directory.
+```bash
+$ mkdir -p path/to/ros2_ws/src
+$ cd path/to/ros2_ws/src
+$ git clone https://github.com/IMRCLab/crazyswarm2 --recursive
+$ git clone --branch ros2 --recursive https://github.com/IMRCLab/motion_capture_tracking.git
+```
+Additionally, the ros2 package provided with this repository needs to be accessible in the `ros2_ws/src` folder. Therefore, create a symbolic link:
+```bash
+$ ln -s path/to/adverserial_frontnet/hardware/frontnet_ros path/to/ros2_workspace/src
+```
+Please make sure to use the full path instead of relative paths to avoid issues with linking.\
+Now build all of the packages:
+```bash
+$ cd ../ # go back to path/to/ros2_ws/
+$ colcon build --symlink-install
+```
+
+### Crazyflie STM32 firmware
+The Crazyflie firmware will be flashed wirelessly via the Crazyradio. Please power the Crazyflie via a battery or use the USB connector.\
+As a prerequisite, we need the address of the Crazyflie. If not set manually, the standard address is `radio://0/80/2M/E7E7E7E7E7`. The address can be set easily with the [Crazyflie Client](https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/userguides/userguide_client/#firmware-configuration).
+
+Now move to the correct folder, build and lastly flash the firmware with the following commands:
+```bash
+$ cd path/to/adversarial_frontnet/hardware/frontnet_controller/
+$ make -j
+$ cfloader flash ../crazyflie-firmware/cf2.bin stm32-fw -w radio://0/80/2M/E7E7E7E7E7
+```
+
+### AI deck GAP8 Firmware (only needed for *victim* UAV)
+To flash the quantized Frontnet network and adapted GAP8 firmware to the GAP8 of the AI deck, connect the JTAG Debugger to the corresponding pins of the GAP8 and via USB to your PC. Please attach the AI deck to the Crazyflie, such that it is powered either through the attached battery or the USB connector.
+
+Then flash the code as follows:
+```bash
+$ cd path/to/adversarial_frontnet/hardware/frontnet_code/
+$ docker run --rm -v ${PWD}:/module --device /dev/ttyUSB0 --privileged -P bitcraze/aideck /bin/bash -c 'export GAPY_OPENOCD_CABLE=interface/ftdi/olimex-arm-usb-tiny-h.cfg; source /gap_sdk/configs/ai_deck.sh; cd /module;  make clean all'
+```
+Please make sure that your JTAG device is `/dev/ttyUSB0`, otherwise please change the command accordingly with the correct number.
+
+### Fly with Crazyswarm 2 and Frontnet
+After successfull flashing of both firmwares to the STM32 and the GAP8, you can start your flight tests.\
+If you are utilizing the FlowDeck for state estimates, make sure it is connected to the bottom of your Crazyflie. Otherwise make sure that your motion capture system is running and you have configured Crazyswarm 2 correctly to receive pose information (e.g. adapt `motion_capture.yaml` in the `hardware/frontnet_ros_config` folder to match your setup).
+
+You'll need at least one terminal window opened in your ros2 workspace.
+```bash
+$ cd path/to/ros2_ws/
+# additional sourcing needed to prepare ros2
+$ source /opt/ros/galactic/setup.bash
+$ . install/local_setup.bash
+$ ros2 launch frontnet_ros launch.py
+```
+After a few seconds, you'll be able to take off pressing the Start button on the Xbox controller. To enable the Frontnet network output to be used to generate new setpoints, press the X button and move in front of the camera.
+
+<!-- ### Generate C code and flashable image of quantized Frontnet
 For creating a flashable image, we first need a `.onnx` file of the quantized networks. We use [nemo](https://github.com/pulp-platform/nemo) to receive the `.onnx` file.\
 Nemo only works on older versions of PyTorch. We therefore create a new Python Virtual Environment for this process.
 ```bash
@@ -144,15 +218,6 @@ Lastly, to generate the C code and flashable image:
 ```bash
 cd /home/adversarial_frontnet/hardware/frontnet_code/
 make clean all run CORE=8 platform=gvsoc
-```
+``` -->
 
 
-### ROS2 package
-
-## ROS2 Package
-
-Use a symlink to your ROS2 workspace
-
-```
-ln -s <path-to>/adverserial_frontnet/hardware/frontnet_ros <path-to>/ros2_workspace/src
-```

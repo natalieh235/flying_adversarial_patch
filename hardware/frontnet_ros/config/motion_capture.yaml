@@ -3,7 +3,7 @@
     type: "optitrack"
     hostname: "130.149.82.37"
 
-    mode: "libobjecttracker" # one of motionCapture,libRigidBodyTracker
+    mode: "motionCapture" # one of motionCapture,libRigidBodyTracker
 
     marker_configurations:
       default: # for standard Crazyflie
