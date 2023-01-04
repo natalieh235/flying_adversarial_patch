@@ -160,13 +160,24 @@ class TargetedAttack():
 
 def targeted_attack(image, patch, target, model, transformation_matrix, path="eval/targeted/"):
     # initialize optimizer
-    opt = torch.optim.Adam([transformation_matrix], lr=1e-4)
+    opt = torch.optim.Adam([transformation_matrix], lr=1e-3)
     prediction_ori = torch.concat(model(image)).squeeze(1)
 
 
-    rotation_matrix = torch.zeros(1, 2, 2).to(transformation_matrix.device)
-    rotation_matrix[0][0][0] = 0.4
-    rotation_matrix[0][1][1] = 0.4
+    # rotation_matrix = torch.zeros(1, 2, 2).to(transformation_matrix.device)
+    # rotation_matrix[0][0][0] = 0.4
+    # rotation_matrix[0][1][1] = 0.4
+
+    identity = torch.eye(2).to(transformation_matrix.device)
+    # rotation_matrix *= transformation_matrix
+
+    translation_vector = torch.tensor([[[-0.5, 0.0]]]).to(transformation_matrix.device)#torch.zeros(1, 1, 2).to(transformation_matrix.device)
+    # print(rotation_matrix.unsqueeze(0).shape, translation_vector.shape)
+    # full_transform = torch.cat((rotation_matrix.unsqueeze(0), translation_vector.mT), dim=2)
+
+    # print(scaling_angle)
+    # print("full_transform: ", full_transform)
+
     # full_transform = torch.cat((rotation_matrix, transformation_matrix.mT), dim=2)
     # print(full_transform)
 
@@ -190,10 +201,16 @@ def targeted_attack(image, patch, target, model, transformation_matrix, path="ev
         while i <= 2500:
             # i += 1
             # vectors.append(transformation_matrix.view(-1).detach().cpu().numpy())
-            tanh_matrix = torch.tanh(transformation_matrix)
-            vectors.append(tanh_matrix.view(-1).detach().cpu().numpy())
+            # tanh_matrix = torch.tanh(transformation_matrix)
+            # vectors.append(tanh_matrix.view(-1).detach().cpu().numpy())
+
+            vectors.append(transformation_matrix.view(-1).detach().cpu().numpy())
+
+            rotation_matrix = (identity * transformation_matrix).unsqueeze(0)
+
             
-            full_transform = torch.cat((rotation_matrix, tanh_matrix.mT), dim=2)
+            # full_transform = torch.cat((rotation_matrix, tanh_matrix.mT), dim=2)
+            full_transform = torch.cat((rotation_matrix, translation_vector.mT), dim=2)
 
             new_image = place_patch(image, patch, full_transform)#transformation_matrix)
             # new_image += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(new_image.shape).to(new_image.device)   #loc == mu, scale == sigma
@@ -202,7 +219,7 @@ def targeted_attack(image, patch, target, model, transformation_matrix, path="ev
             prediction = torch.concat(model(new_image)).squeeze(1)
             predictions.append(prediction.detach().cpu().numpy())
             #print("Distance original and current prediction: ",  torch.dist(prediction[1], prediction_ori[1], p=2))
-            loss = torch.dist(prediction[1], target[1], p=2)
+            loss = torch.dist(prediction[0], target[0], p=2)
             #overall_loss = torch.dist(prediction, target, p=2)
             
             # loss_x = torch.dist(prediction[0], target[0], p=2)
@@ -226,16 +243,16 @@ def targeted_attack(image, patch, target, model, transformation_matrix, path="ev
             if i % 10 == 0:
                 print("step %d, loss %.6f" % (i, loss.detach().cpu().numpy()))
                 # print("original value: ", prediction_ori[1].detach().cpu().numpy())
-                print("prediciton: ", prediction[1].detach().cpu().numpy())#, ", target: ", target[1].detach().cpu().numpy())
+                print("prediciton: ", prediction[0].detach().cpu().numpy())#, ", target: ", target[1].detach().cpu().numpy())
                 print("matrix: ", transformation_matrix.view(-1).detach().cpu().numpy())
                 # np.save(path+'test_image_'+str(i), new_image.detach().cpu().numpy())
     except KeyboardInterrupt:
         print("Aborting optimization...")    
 
     print("Bing!")
-    print("Lowest loss: ", np.min(losses), np.argmin(losses))
-    print("Translation vector: ", vectors[np.argmin(losses)])
-    print("Lowest prediciton: ", predictions[np.argmin(losses)])
+    print("Best loss: ", np.min(losses), np.argmin(losses))
+    print("Best translation vector: ", vectors[np.argmin(losses)])
+    print("Best prediciton: ", predictions[np.argmin(losses)])
 
     np.save(path+'losses', losses)
     np.save(path+'vectors', vectors)
@@ -247,7 +264,7 @@ def targeted_attack(image, patch, target, model, transformation_matrix, path="ev
 
 def untargeted_attack(image, patch, model, transformation_matrix, path='eval/untargeted/'): # angle, scale, tx, ty,
     # initialize optimizer
-    opt = torch.optim.Adam([transformation_matrix], lr=1e-4)
+    opt = torch.optim.Adam([transformation_matrix], lr=1e-1)
     prediction = torch.concat(model(image)).squeeze(1)
     
     
@@ -303,7 +320,7 @@ if __name__=="__main__":
     # dataset.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # dataset.dataset.labels.to(device)
 
-    path = 'eval/debugging_9/'
+    path = 'eval/debugging_only_scale/'
     os.makedirs(path, exist_ok = True)
 
     patch = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch.npy")
@@ -321,37 +338,46 @@ if __name__=="__main__":
     image = image.unsqueeze(0).to(device)
     
     print("initial pose: ", pose)
-    pose[1] = -2.
+    # pose[1] = -2.
+    pose[0] = 4.0
     target = pose.to(device)
     print("target: ", target)
 
     # np.save(path+'ori_matrix', transformation_matrix.detach().cpu().numpy())
 
-    vectors = []
-    predictions = []
-    for i in range(10):
-        translation_vector = torch.FloatTensor(1, 1, 2).uniform_(-1, 1).to(device)
-        rotation_matrix = torch.zeros(1, 2, 2).to(translation_vector.device)
-        rotation_matrix[0][0][0] = 0.4
-        rotation_matrix[0][1][1] = 0.4
+    # vectors = []
+    # predictions = []
+    # for i in range(10):
+    #     translation_vector = torch.zeros(1, 1, 2)#torch.FloatTensor(1, 1, 2).uniform_(-1, 1).to(device)
+    #     scaling_angle = torch.FloatTensor(1,).uniform_(0.2, 0.4).to(device)
+    #     rotation_matrix = torch.eye(2).to(device)
+    #     # rotation_matrix[0][0][0] = 0.4
+    #     # rotation_matrix[0][1][1] = 0.4
+    #     rotation_matrix *= scaling_angle
 
-        vectors.append(translation_vector)
-        tanh_matrix = torch.tanh(translation_vector)
+    #     # vectors.append(translation_vector)
+    #     # tanh_matrix = torch.tanh(translation_vector)
+
+    #     vectors.append(scaling_angle)
             
-        full_transform = torch.cat((rotation_matrix, tanh_matrix.mT), dim=2)
+    #     #full_transform = torch.cat((rotation_matrix, tanh_matrix.mT), dim=2)
+    #     full_transform = torch.cat((rotation_matrix.unsqueeze(0), translation_vector), dim=2)
 
-        new_image = place_patch(image, patch, full_transform)#transformation_matrix)
-            # new_image += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(new_image.shape).to(new_image.device)   #loc == mu, scale == sigma
-        new_image.data.clamp_(0., 255.)
+    #     new_image = place_patch(image, patch, full_transform)#transformation_matrix)
+    #         # new_image += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(new_image.shape).to(new_image.device)   #loc == mu, scale == sigma
+    #     new_image.data.clamp_(0., 255.)
 
-        prediction = torch.concat(model(new_image)).squeeze(1)
-        predictions.append(prediction[1].detach().cpu().numpy())
+    #     prediction = torch.concat(model(new_image)).squeeze(1)
+    #     predictions.append(prediction[0].detach().cpu().numpy())
+
+    # translation_vector = vectors[np.argmin(predictions)].requires_grad_(True)
+    # scaling_angle = vectors[np.argmax(predictions)].requires_grad_(True)
+    # print("initial translation (best of 10 random): ", translation_vector)
+
+    scaling_angle = torch.tensor(0.4).to(device).requires_grad_(True)#torch.FloatTensor(1,).uniform_(0.2, 0.4).to(device).requires_grad_(True)
 
 
-    translation_vector = vectors[np.argmin(predictions)].requires_grad_(True)
-    print("initial translation (best of 10 random): ", translation_vector)
-
-    _, optimized_matrix, _ = targeted_attack(image, patch, target, model, translation_vector, path)#transformation_matrix, path)
+    _, optimized_matrix, _ = targeted_attack(image, patch, target, model, scaling_angle, path)#transformation_matrix, path)
 
     # np.save(path+'optimized_matrix', optimized_matrix.detach().cpu().numpy())
 
