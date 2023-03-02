@@ -338,11 +338,12 @@ def place_patch(image, patch, transformation_matrix):
     affine_grid = torch.nn.functional.affine_grid(inv_t_matrix, size=(1, 1, 96, 160), align_corners=False)
 
     # calculate both the bit mask and the transformed patch
-    bit_mask = grid_sample(mask, affine_grid).bool()
-    transformed_patch = grid_sample(patch, affine_grid)
+    bit_mask = grid_sample(mask, affine_grid, align_corners=False, padding_mode='zeros').bool()
+    transformed_patch = grid_sample(patch, affine_grid, align_corners=False, padding_mode='zeros')
 
     # first erase all pixel values in the original image in the area of the patch
     modified_image = image * ~bit_mask
+    # transformed_patch *= bit_mask
     # and now replace these values with the transformed patch
     modified_image += transformed_patch
 
