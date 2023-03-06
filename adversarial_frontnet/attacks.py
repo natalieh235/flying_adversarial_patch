@@ -9,260 +9,80 @@ from patch_placement import place_patch
 
 from util import plot_patch
 
-class Patch(torch.nn.Module):
-    def __init__(self, device, target=[True, False, False, False], patch_size=[1, 50, 50]):
-        super(Patch, self).__init__()
-        patch = (torch.rand(1, *patch_size, device=device) * 255.)#.requires_grad_()
-        self.patch = torch.nn.Parameter(patch)
+def targeted_attack(batch, patch, model, path="eval/targeted/"):
+    target = torch.tensor(-2.0)
 
-        transformation_min = torch.tensor([[[*torch.rand(3,)],[*torch.rand(3,)]]], device=device)
-        transformation_max = torch.tensor([[[*torch.rand(3,)],[*torch.rand(3,)]]], device=device)
+    all_optimized = []
+    all_losses = []
 
-        self.transformation_min = torch.nn.Parameter(transformation_min)
-        self.transformation_max = torch.nn.Parameter(transformation_max)
+    eye = torch.eye(2, 2).unsqueeze(0)
 
-        self.target = torch.tensor(target).to(device)
+    try: 
+        for restart in trange(50):
+            tx = torch.FloatTensor(1,).uniform_(-1., 1.).requires_grad_(True)
+            ty = torch.FloatTensor(1,).uniform_(-1., 1.).requires_grad_(True)
+            scaling_factor = torch.FloatTensor(1,).uniform_(0.1, 0.8).requires_grad_(True)
 
-        if self.target[0] == True:
-            self.lower_limit = 1. 
-            self.upper_limit = 3.6
-        elif self.target[1] == True:
-            self.lower_limit = -2.
-            self.upper_limit = 2.
-        elif self.target[2] == True:
-            self.lower_limit= -0.5
-            self.upper_limit= 0.5
-        else:
-            raise NotImplementedError
+            opt = torch.optim.Adam([scaling_factor, tx, ty], lr=3e-2)
 
+            optimized_vec = []
+            losses = []
 
-    def place(self, image):
-        image_min = place_patch(image, self.patch, self.transformation_min)
-        image_max = place_patch(image, self.patch, self.transformation_max)
-        return torch.stack([image_min, image_max])
+            for i in range(200):
+                tx_tanh = torch.tanh(tx)
+                ty_tanh = torch.tanh(ty)
+                scaling_sig = torch.sigmoid(scaling_factor)
 
-    def batch_place(self, batch):
-        # out = torch.stack([self.place(img) for img in batch]).view((2, *batch.shape))
-        # batch_min, batch_max = out
-        batch_min = place_patch(batch, self.patch, self.transformation_min)
-        batch_max = place_patch(batch, self.patch, self.transformation_max)
+                translation_vector = torch.stack([tx_tanh, ty_tanh]).unsqueeze(0)
+                rotation_matrix = eye * scaling_sig
+                transformation_matrix = torch.cat((rotation_matrix, translation_vector), dim=2)
 
-        return batch_min, batch_max
+                mod_img = place_patch(batch, patch.unsqueeze(0).unsqueeze(0), transformation_matrix)
+                mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape)
+                mod_img.clamp_(0., 255.)
 
-class TargetedAttack():
-    def __init__(self, model, dataset, device, learning_rate = 3e-4, path='eval/targeted/'):
-        self.model = model
-        self.dataset = dataset
-        self.device = device
-        
-        self.path = path
+                prediction_mod = torch.stack(model(mod_img.float())).permute(1, 0, 2).squeeze(2).squeeze(0)
 
-        self.x_target = [True, False, False, False]
-        self.y_target = [False, True, False, False]
-        self.z_target = [False, False, True, False]
+                optimized_vec.append([scaling_sig.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction_mod[..., 1]).clone().detach().cpu().item()])
 
-        # init random patch
-        self.x_patch = Patch(self.device, self.x_target)
-        self.y_patch = Patch(self.device, self.y_target)
-        self.z_patch = Patch(self.device, self.z_target)
+                all_l2 = torch.stack([torch.dist(target, i, p=2) for i in prediction_mod[..., 1]])
+                loss = torch.mean(all_l2)
+                losses.append(loss.clone().detach().cpu().item())
 
-        self.optimizer = torch.optim.Adam([*self.x_patch.parameters(), *self.y_patch.parameters(), *self.z_patch.parameters()], lr = learning_rate)
+                #loss = torch.dist(target, prediction_mod[..., 1], p=2)
 
-    def optimize(self, epochs=100000):
-        try:
-            self.all_losses = []
-            self.all_avg_losses = []
-            for i in trange(epochs):
-                self.epoch_losses = []
-                for _ in range(4):#len(self.dataset)):
-                    image_batch, pose_batch = next(iter(self.dataset))
-                    image_batch = image_batch.to(self.device)
-                    pose_batch = pose_batch.to(self.device)
-
-                    self.loss = self._calc_all_losses(image_batch, pose_batch, patches=[self.x_patch, self.y_patch, self.z_patch])
-
-                    # save loss for evaluation
-                    self.epoch_losses.append(self.loss.detach().cpu().numpy())
-                    self.all_losses.append(self.loss.detach().cpu().numpy())
-
-                    # perform update step
-                    self.optimizer.zero_grad()
-                    self.loss.backward()
-                    self.optimizer.step()
-
-                    # restrict patch pixel values to stay between 0 and 255
-                    self.x_patch.patch.data.clamp_(0., 255.)
-                    self.y_patch.patch.data.clamp_(0., 255.)
-                    self.z_patch.patch.data.clamp_(0., 255.)
-
-                # generate plots and save intermediate patches
-                self.all_avg_losses.append(np.mean(self.epoch_losses))
-                
-                # only save plots after certain epochs
-                if i % (epochs/100.) == 0:
-                    self._save_plots(i)
-
-                np.save(self.path+'x_patch', self.x_patch.patch.detach().cpu().numpy(), self.x_patch.transformation_min.detach().cpu().numpy(), self.x_patch.transformation_max.detach().cpu().numpy())
-                np.save(self.path+'y_patch', self.y_patch.patch.detach().cpu().numpy(), self.y_patch.transformation_min.detach().cpu().numpy(), self.y_patch.transformation_max.detach().cpu().numpy())
-                np.save(self.path+'z_patch', self.z_patch.patch.detach().cpu().numpy(), self.z_patch.transformation_min.detach().cpu().numpy(), self.z_patch.transformation_max.detach().cpu().numpy())
-
-                self._save_loss()
-
-        except KeyboardInterrupt:                   # training process can be interrupted anytime
-            print("Aborting optimization...")    
-
-        return self.x_patch, self.y_patch, self.z_patch
-
-    def _calc_targets(self, org_poses, target, lower_limit, upper_limit):
-        target_min = org_poses * ~target + (lower_limit*target.int())
-        target_max = org_poses * ~target + (upper_limit*target.int())
-
-        return target_min, target_max
-
-    def _calc_single_loss(self, images, target, norm=2):
-        # get prediction of current pose from NN
-        prediciton = torch.stack(self.model(images)).permute(1, 0, 2).squeeze(2)  # get prediction into appropriate shape
-        loss = torch.dist(target, prediciton, p=norm)
-
-        return loss
-
-    def _calc_all_losses(self, images, poses, patches):
-
-        losses = torch.zeros(1, device=self.device)
-        for i, patch in enumerate(patches):
-            images_min, images_max = patch.batch_place(images)
-            target_min, target_max = self._calc_targets(poses, patch.target, lower_limit=patch.lower_limit, upper_limit=patch.upper_limit)
-            loss_min = self._calc_single_loss(images_min, target_min)
-            loss_max = self._calc_single_loss(images_max, target_max)
-            losses += (loss_min + loss_max) / 2.
-
-        return losses / len(patches)
-
-    def _save_plots(self, idx, path='plots/epoch_'):
-        image, _ = dataset.dataset.__getitem__(0)
-        image = image.unsqueeze(0).to(device)
-
-        plot_path = self.path + path + str(idx) + '/'
-        os.makedirs(plot_path, exist_ok = True)
-
-        plot_patch(self.x_patch, image, title='X Patch', save=True, path=plot_path)
-
-        plot_patch(self.y_patch, image, title='Y Patch', save=True, path=plot_path)
-
-        plot_patch(self.z_patch, image, title='Z Patch', save=True, path=plot_path)
-
-
-    def _save_loss(self, path='losses/'):
-        save_path = self.path+path
-        os.makedirs(save_path, exist_ok = True)
-        np.save(save_path+'all_losses', self.all_losses)
-        np.save(save_path+'all_avg_losses', self.all_avg_losses)
-
-def targeted_attack(image, patch, target, model, scaling_factor, translation_vector, path="eval/targeted/"):
-    # initialize optimizer
-    opt = torch.optim.Adam([scaling_factor, translation_vector], lr=1e-3)
-    prediction_ori = torch.concat(model(image)).squeeze(1)
-
-
-    # rotation_matrix = torch.zeros(1, 2, 2).to(transformation_matrix.device)
-    # rotation_matrix[0][0][0] = 0.4
-    # rotation_matrix[0][1][1] = 0.4
-
-    identity = torch.eye(2).to(scaling_factor.device)
-    # rotation_matrix *= transformation_matrix
-
-    # translation_vector = torch.tensor([[[-0.5, 0.0]]]).to(transformation_matrix.device)#torch.zeros(1, 1, 2).to(transformation_matrix.device)
-    # print(rotation_matrix.unsqueeze(0).shape, translation_vector.shape)
-    # full_transform = torch.cat((rotation_matrix.unsqueeze(0), translation_vector.mT), dim=2)
-
-    # print(scaling_angle)
-    # print("full_transform: ", full_transform)
-
-    # full_transform = torch.cat((rotation_matrix, transformation_matrix.mT), dim=2)
-    # print(full_transform)
-
-    # new_image = place_patch(image, patch, full_transform)#transformation_matrix)
-    # pred_attack = torch.concat(model(new_image)).squeeze(1)
-    # loss = torch.dist(prediction_ori[1], pred_attack[1], p=2)
-    # print("initial loss: ", loss.detach().cpu().numpy())
-
-    losses = []
-    vectors = []
-    predictions = []
-    # losses.append(loss.detach().cpu().numpy())
-    
-    # print("prediciton: ", prediction, prediction[1])
-    # print("target: ", target[1])
-
-    loss = 3.
-
-    i = 0.
-    try:
-        while i <= 2500:
-            # i += 1
-            # vectors.append(transformation_matrix.view(-1).detach().cpu().numpy())
-            tanh_trans = torch.tanh(translation_vector).unsqueeze(0).unsqueeze(0)
-            sig_scale = torch.sigmoid(scaling_factor)
-            # vectors.append(tanh_matrix.view(-1).detach().cpu().numpy())
-
-            # vectors.append([scaling_factortranslation_vector.view(-1).detach().cpu().numpy()])
-
-            rotation_matrix = (identity * sig_scale).unsqueeze(0)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
 
             
-            full_transform = torch.cat((rotation_matrix, tanh_trans.mT), dim=2)
-            vectors.append([sig_scale.detach().cpu().numpy(), *tanh_trans.detach().cpu().numpy()])
-            # full_transform = torch.cat((rotation_matrix, translation_vector.mT), dim=2)
+            optimized_vec.append([scaling_sig.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction_mod[..., 1]).clone().detach().cpu().item()])
 
-            new_image = place_patch(image, patch, full_transform)#transformation_matrix)
-            # new_image += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(new_image.shape).to(new_image.device)   #loc == mu, scale == sigma
-            new_image.data.clamp_(0., 255.)
+            all_optimized.append(np.array(optimized_vec))
+            all_losses.append(np.array(losses))
 
-            prediction = torch.concat(model(new_image)).squeeze(1)
-            predictions.append(prediction.detach().cpu().numpy())
-            #print("Distance original and current prediction: ",  torch.dist(prediction[1], prediction_ori[1], p=2))
-            loss = torch.dist(prediction[0], target[0], p=2)
-            #overall_loss = torch.dist(prediction, target, p=2)
-            
-            # loss_x = torch.dist(prediction[0], target[0], p=2)
-            # loss_y = torch.dist(prediction[1], target[1], p=2)
-            # loss_z = torch.dist(prediction[2], target[2], p=2)
-            # loss_phi = torch.dist(prediction[3], target[3], p=2)
+        all_optimized_a = np.array(all_optimized)
+        all_losses_a = np.array(all_losses_a)
 
-            # loss = 0.16 * loss_x + 0.5 * loss_y + 0.16 * loss_z + 0.16 * loss_phi
-            
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-
-            # rotation_matrix = rotation_matrix.detach()
-            losses.append(loss.detach().cpu().numpy())#[loss_x.detach().cpu().numpy(), loss_y.detach().cpu().numpy(), loss_z.detach().cpu().numpy(), loss.detach().cpu().numpy()])
-
-
-            i += 1
-
-            
-            if i % 10 == 0:
-                print("step %d, loss %.6f" % (i, loss.detach().cpu().numpy()))
-                # print("original value: ", prediction_ori[1].detach().cpu().numpy())
-                print("prediciton: ", prediction[0].detach().cpu().numpy())#, ", target: ", target[1].detach().cpu().numpy())
-                print("matrix: ", full_transform.view(-1).detach().cpu().numpy())
-                # np.save(path+'test_image_'+str(i), new_image.detach().cpu().numpy())
     except KeyboardInterrupt:
         print("Aborting optimization...")    
 
     print("Bing!")
-    print("Best loss: ", np.min(losses), np.argmin(losses))
-    print("Best scale factor & translation vector: ", vectors[np.argmin(losses)])
-    print("Best prediciton: ", predictions[np.argmin(losses)])
+    lowest_plot, lowest_idx = np.argwhere(all_optimized_a[..., 3] == np.min(all_optimized_a[..., 3]))[0]
 
-    np.save(path+'losses', losses)
-    np.save(path+'vectors', vectors)
-    np.save(path+'predicitons', predictions)
+    lowest_scale, lowest_tx, lowest_ty, lowest_y = all_optimized_a[lowest_plot, lowest_idx]
+    # print("Best loss: ", np.min(losses), np.argmin(losses))
+    print("Best scale factor & translation vector: ", lowest_scale, lowest_tx, lowest_ty)
+    print("Best prediciton: y = ", lowest_y)
 
+    np.save(path+'best_optimized.npy', all_optimized_a[lowest_plot])
+    np.save(path+'best_losses.npy', all_losses_a[lowest_plot])
 
+    # np.save(path+'losses', losses)
+    # np.save(path+'vectors', vectors)
+    # np.save(path+'predicitons', predictions)
 
-    return patch, vectors[np.argmin(losses)], losses
+    return patch, [lowest_scale, lowest_tx, lowest_ty]
 
 def untargeted_attack(image, patch, model, transformation_matrix, path='eval/untargeted/'): # angle, scale, tx, ty,
     # initialize optimizer
@@ -318,7 +138,7 @@ if __name__=="__main__":
 
     model = load_model(path=model_path, device=device, config=model_config)
     model.eval()
-    dataset = load_dataset(path=dataset_path, batch_size=32, shuffle=True, drop_last=True, num_workers=0)
+    dataset = load_dataset(path=dataset_path, batch_size=20, shuffle=True, drop_last=True, num_workers=0)
     # dataset.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # dataset.dataset.labels.to(device)
 
@@ -328,80 +148,7 @@ if __name__=="__main__":
     patch = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch.npy")
     patch = torch.from_numpy(patch).unsqueeze(0).unsqueeze(0).to(device)
     
-    #transformation_matrix = torch.tensor([[[*torch.rand(3,)],[*torch.rand(3,)]]], device=device).requires_grad_(True)
-    # transformation_matrix = torch.zeros((1,2,3), device=device)
-    # transformation_matrix[..., 0, 0] = 0.4
-    # transformation_matrix[..., 1, 1] = 0.4
-    # transformation_matrix = transformation_matrix.requires_grad_(True)
-    # translation_vector = torch.FloatTensor(1, 1, 2).uniform_(-1, 1).to(device).requires_grad_(True)
-    # print("initial translation: ", translation_vector)
+    batch, _ = next(iter(dataset))
+    batch = batch.to(device)
 
-    image, pose = dataset.dataset.__getitem__(0)
-    image = image.unsqueeze(0).to(device)
-    
-    print("initial pose: ", pose)
-    # pose[1] = -2.
-    pose[0] = 4.0
-    target = pose.to(device)
-    print("target: ", target)
-
-    # np.save(path+'ori_matrix', transformation_matrix.detach().cpu().numpy())
-
-    # vectors = []
-    # predictions = []
-    # for i in range(10):
-    #     translation_vector = torch.zeros(1, 1, 2)#torch.FloatTensor(1, 1, 2).uniform_(-1, 1).to(device)
-    #     scaling_angle = torch.FloatTensor(1,).uniform_(0.2, 0.4).to(device)
-    #     rotation_matrix = torch.eye(2).to(device)
-    #     # rotation_matrix[0][0][0] = 0.4
-    #     # rotation_matrix[0][1][1] = 0.4
-    #     rotation_matrix *= scaling_angle
-
-    #     # vectors.append(translation_vector)
-    #     # tanh_matrix = torch.tanh(translation_vector)
-
-    #     vectors.append(scaling_angle)
-            
-    #     #full_transform = torch.cat((rotation_matrix, tanh_matrix.mT), dim=2)
-    #     full_transform = torch.cat((rotation_matrix.unsqueeze(0), translation_vector), dim=2)
-
-    #     new_image = place_patch(image, patch, full_transform)#transformation_matrix)
-    #         # new_image += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(new_image.shape).to(new_image.device)   #loc == mu, scale == sigma
-    #     new_image.data.clamp_(0., 255.)
-
-    #     prediction = torch.concat(model(new_image)).squeeze(1)
-    #     predictions.append(prediction[0].detach().cpu().numpy())
-
-    # translation_vector = vectors[np.argmin(predictions)].requires_grad_(True)
-    # scaling_angle = vectors[np.argmax(predictions)].requires_grad_(True)
-    # print("initial translation (best of 10 random): ", translation_vector)
-
-    scaling_factor = torch.FloatTensor(1,).uniform_(0.1, 0.6).to(device).requires_grad_(True)
-    translation_vector = torch.FloatTensor(2).uniform_(-1, 1).to(device).requires_grad_(True)
-
-    print(f"initial scale: {scaling_factor.detach().cpu().numpy()}, initial translation: {translation_vector.detach().cpu().numpy()}")
-
-    _, optimized_matrix, _ = targeted_attack(image, patch, target, model, scaling_factor, translation_vector, path)#transformation_matrix, path)
-
-    # np.save(path+'optimized_matrix', optimized_matrix.detach().cpu().numpy())
-
-
-
-    # image, pose = dataset.dataset.__getitem__(0)
-    # image = image.unsqueeze(0).to(device)
-    # pose = pose.to(device)
-    
-    # attack = TargetedAttack(model, dataset, device, path=path)
-    
-    # np.save(path+'ori_patch', attack.x_patch.patch.detach().cpu().numpy())
-
-    # print("Original pose: ", pose, pose.shape)
-    # prediction = torch.concat(model(image)).squeeze(1)
-    # print("Predicted pose: ", prediction)
-    # print("L2 dist original-predicted: ", torch.dist(pose, prediction, p=2))
-
-    # #optimized_x_patch, optimized_transformation = targeted_attack(image, torch.tensor([4., *prediction[1:]]), model, path)
-    # optimized_x_patch, optimized_y_patch, optimized_z_patch = attack.optimize()
-    
-    # np.save(path+"opti_patch", optimized_x_patch.patch.detach().cpu().numpy())
-    # new_image_min = place_patch(image, optimized_x_patch.patch, optimized_x_patch.transformation_min)
+    patch, optimized_vecs = targeted_attack(batch, patch, model, path='eval/new/')
