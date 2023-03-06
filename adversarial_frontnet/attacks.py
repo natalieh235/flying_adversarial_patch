@@ -10,18 +10,18 @@ from patch_placement import place_patch
 from util import plot_patch
 
 def targeted_attack(batch, patch, model, path="eval/targeted/"):
-    target = torch.tensor(-2.0)
+    target = torch.tensor(-2.0).to(patch.device)
 
     all_optimized = []
     all_losses = []
 
-    eye = torch.eye(2, 2).unsqueeze(0)
+    eye = torch.eye(2, 2).unsqueeze(0).to(patch.device)
 
     try: 
         for restart in trange(50):
-            tx = torch.FloatTensor(1,).uniform_(-1., 1.).requires_grad_(True)
-            ty = torch.FloatTensor(1,).uniform_(-1., 1.).requires_grad_(True)
-            scaling_factor = torch.FloatTensor(1,).uniform_(0.1, 0.8).requires_grad_(True)
+            tx = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
+            ty = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
+            scaling_factor = torch.FloatTensor(1,).uniform_(0.1, 0.8).to(patch.device).requires_grad_(True)
 
             opt = torch.optim.Adam([scaling_factor, tx, ty], lr=3e-2)
 
@@ -37,8 +37,8 @@ def targeted_attack(batch, patch, model, path="eval/targeted/"):
                 rotation_matrix = eye * scaling_sig
                 transformation_matrix = torch.cat((rotation_matrix, translation_vector), dim=2)
 
-                mod_img = place_patch(batch, patch.unsqueeze(0).unsqueeze(0), transformation_matrix)
-                mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape)
+                mod_img = place_patch(batch, patch, transformation_matrix)
+                mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
                 mod_img.clamp_(0., 255.)
 
                 prediction_mod = torch.stack(model(mod_img.float())).permute(1, 0, 2).squeeze(2).squeeze(0)
@@ -62,7 +62,7 @@ def targeted_attack(batch, patch, model, path="eval/targeted/"):
             all_losses.append(np.array(losses))
 
         all_optimized_a = np.array(all_optimized)
-        all_losses_a = np.array(all_losses_a)
+        all_losses_a = np.array(all_losses)
 
     except KeyboardInterrupt:
         print("Aborting optimization...")    
@@ -142,13 +142,13 @@ if __name__=="__main__":
     # dataset.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # dataset.dataset.labels.to(device)
 
-    path = 'eval/debugging_scale_trans/'
+    path = 'eval/new/debug/'
     os.makedirs(path, exist_ok = True)
 
-    patch = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch.npy")
+    patch = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch_resized.npy")
     patch = torch.from_numpy(patch).unsqueeze(0).unsqueeze(0).to(device)
     
     batch, _ = next(iter(dataset))
     batch = batch.to(device)
 
-    patch, optimized_vecs = targeted_attack(batch, patch, model, path='eval/new/')
+    patch, optimized_vecs = targeted_attack(batch, patch, model, path=path)
