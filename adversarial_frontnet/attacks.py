@@ -10,25 +10,34 @@ from patch_placement import place_patch
 from util import plot_patch
 
 def targeted_attack(batch, patch, model, path="eval/targeted/"):
+
+    patch_t = patch.clone().requires_grad_(True)
+
     target = torch.tensor(-2.0).to(patch.device)
 
-    all_optimized = []
+    all_optimized_vec = []
+    all_optimized_patches = []
     all_losses = []
 
     eye = torch.eye(2, 2).unsqueeze(0).to(patch.device)
 
     try: 
         for restart in trange(50):
-            tx = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
-            ty = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
-            scaling_factor = torch.FloatTensor(1,).uniform_(0.1, 0.8).to(patch.device).requires_grad_(True)
+            tx = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device)#.requires_grad_(True)
+            ty = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device)#.requires_grad_(True)
+            scaling_factor = torch.FloatTensor(1,).uniform_(0.1, 0.8).to(patch.device)#.requires_grad_(True)
 
-            opt = torch.optim.Adam([scaling_factor, tx, ty], lr=3e-2)
+            #opt = torch.optim.Adam([scaling_factor, tx, ty], lr=3e-2)
+            opt = torch.optim.Adam([patch_t], lr=3e-2)
 
             optimized_vec = []
+            optimized_patches = []
             losses = []
 
             for i in range(200):
+
+                optimized_patches.append(patch_t.clone().detach()[0][0].cpu().numpy())
+
                 tx_tanh = torch.tanh(tx)
                 ty_tanh = torch.tanh(ty)
                 scaling_sig = torch.sigmoid(scaling_factor)
@@ -37,7 +46,7 @@ def targeted_attack(batch, patch, model, path="eval/targeted/"):
                 rotation_matrix = eye * scaling_sig
                 transformation_matrix = torch.cat((rotation_matrix, translation_vector), dim=2)
 
-                mod_img = place_patch(batch, patch, transformation_matrix)
+                mod_img = place_patch(batch, patch_t, transformation_matrix)
                 mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
                 mod_img.clamp_(0., 255.)
 
@@ -55,34 +64,50 @@ def targeted_attack(batch, patch, model, path="eval/targeted/"):
                 loss.backward()
                 opt.step()
 
+                patch_t.data.clamp_(0., 255.)
+
             
             optimized_vec.append([scaling_sig.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction_mod[..., 1]).clone().detach().cpu().item()])
+            optimized_patches.append(patch_t.clone().detach()[0][0].cpu().numpy())
 
-            all_optimized.append(np.array(optimized_vec))
+            all_optimized_vec.append(np.array(optimized_vec))
+            all_optimized_patches.append(np.array(optimized_patches))
             all_losses.append(np.array(losses))
 
-        all_optimized_a = np.array(all_optimized)
+        all_optimized_a = np.array(all_optimized_vec)
+        all_optimized_patches_a = np.array(all_optimized_patches)
         all_losses_a = np.array(all_losses)
 
     except KeyboardInterrupt:
         print("Aborting optimization...")    
 
     print("Bing!")
-    lowest_plot, lowest_idx = np.argwhere(all_optimized_a[..., 3] == np.min(all_optimized_a[..., 3]))[0]
+    best_round, lowest_idx = np.argwhere(all_optimized_a[..., 3] == np.min(all_optimized_a[..., 3]))[0]
 
-    lowest_scale, lowest_tx, lowest_ty, lowest_y = all_optimized_a[lowest_plot, lowest_idx]
-    # print("Best loss: ", np.min(losses), np.argmin(losses))
+    best_patch = all_optimized_patches_a[best_round, lowest_idx]
+    lowest_scale, lowest_tx, lowest_ty, lowest_y = all_optimized_a[best_round, lowest_idx]
+
+    print("Best random iteration: ", best_round, lowest_idx)
     print("Best scale factor & translation vector: ", lowest_scale, lowest_tx, lowest_ty)
     print("Best prediciton: y = ", lowest_y)
 
-    np.save(path+'best_optimized.npy', all_optimized_a[lowest_plot])
-    np.save(path+'best_losses.npy', all_losses_a[lowest_plot])
+    print("--Shape sanity checks--")
+    print("patch shape: ", best_patch.shape)
+    print("all patches shape: ", all_optimized_patches_a.shape)
+    print()
+    print("best round optimized vec shape: ", all_optimized_a[best_round].shape)
+    print("all optimized vec shape: ", all_optimized_a.shape)
 
-    # np.save(path+'losses', losses)
-    # np.save(path+'vectors', vectors)
-    # np.save(path+'predicitons', predictions)
+    np.save(path+'all_patches.npy', all_optimized_patches_a)
+    np.save(path+'best_patch.npy', best_patch)
 
-    return patch, [lowest_scale, lowest_tx, lowest_ty]
+
+    np.save(path+'all_optimized_vec.npy', all_optimized_a)
+    np.save(path+'best_optimized_vec.npy', all_optimized_a[best_round])
+
+    np.save(path+'losses.npy', all_losses_a)
+
+    return best_patch, [lowest_scale, lowest_tx, lowest_ty]
 
 def untargeted_attack(image, patch, model, transformation_matrix, path='eval/untargeted/'): # angle, scale, tx, ty,
     # initialize optimizer
@@ -142,7 +167,7 @@ if __name__=="__main__":
     # dataset.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # dataset.dataset.labels.to(device)
 
-    path = 'eval/new/debug/'
+    path = 'eval/new/debug/patch_only/'
     os.makedirs(path, exist_ok = True)
 
     patch = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch_resized.npy")
@@ -152,3 +177,8 @@ if __name__=="__main__":
     batch = batch.to(device)
 
     patch, optimized_vecs = targeted_attack(batch, patch, model, path=path)
+
+    import matplotlib.pyplot as plt
+    plt.imshow(patch, cmap='gray')
+    plt.axis('off')
+    plt.savefig(path+'best_patch.jpg', dpi=500)
