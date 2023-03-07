@@ -9,10 +9,12 @@ from patch_placement import place_patch
 
 from util import plot_patch
 
-def targeted_attack(batch, patch, model, path="eval/targeted/"):
+def targeted_attack(batch, patch, model, lr=3e-2, path="eval/targeted/"):
+
+    os.makedirs(path, exist_ok = True)
 
     patch_t = patch.clone().requires_grad_(True)
-    opt = torch.optim.Adam([patch_t], lr=3e-2)
+    opt = torch.optim.Adam([patch_t], lr=lr)
 
     target = torch.tensor(-2.0).to(patch.device)
 
@@ -42,14 +44,14 @@ def targeted_attack(batch, patch, model, path="eval/targeted/"):
         optimized_patches = []
         losses = []
 
-        for i in trange(200):
+        for i in trange(500):
 
             optimized_patches.append(patch_t.clone().detach()[0][0].cpu().numpy())
 
             mod_img = place_patch(batch, patch_t, transformation_matrix)
             # add noise to patch+background
             mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
-            # restrict modified image to stay in range (0., 255.)
+            # restrict patch+background to stay in range (0., 255.)
             mod_img.clamp_(0., 255.)
 
             # predict x, y, z, yaw
@@ -57,11 +59,10 @@ def targeted_attack(batch, patch, model, path="eval/targeted/"):
 
             optimized_vec.append([scaling_sig.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction_mod[..., 1]).clone().detach().cpu().item()])
 
+            # calculate mean l2 losses (target, y) for all images in batch
             all_l2 = torch.stack([torch.dist(target, i, p=2) for i in prediction_mod[..., 1]])
             loss = torch.mean(all_l2)
             losses.append(loss.clone().detach().cpu().item())
-
-            #loss = torch.dist(target, prediction_mod[..., 1], p=2)
 
             opt.zero_grad()
             loss.backward()
@@ -84,7 +85,6 @@ def targeted_attack(batch, patch, model, path="eval/targeted/"):
     except KeyboardInterrupt:
         print("Aborting optimization...")    
 
-    print("Bing!")
     best_round, lowest_idx = np.argwhere(all_optimized_a[..., 3] == np.min(all_optimized_a[..., 3]))[0]
 
     best_patch = all_optimized_patches_a[best_round, lowest_idx]
@@ -110,8 +110,6 @@ def targeted_attack(batch, patch, model, path="eval/targeted/"):
 
     np.save(path+'losses.npy', all_losses_a)
 
-    print(all_losses_a, all_losses_a.shape)
-
     return best_patch, [lowest_scale, lowest_tx, lowest_ty], all_losses_a[0]
 
 if __name__=="__main__":
@@ -134,13 +132,18 @@ if __name__=="__main__":
     path = 'eval/debug/patch_only/'
     os.makedirs(path, exist_ok = True)
 
-    patch = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch_resized.npy")
-    patch = torch.from_numpy(patch).unsqueeze(0).unsqueeze(0).to(device)
+    patch_start = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch_resized.npy")
+    patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device)
     
+    # patch_start = torch.FloatTensor(1, 1, 200, 200).uniform_(0., 255.).to(device)
+
     batch, _ = next(iter(dataset))
     batch = batch.to(device)
 
-    patch, optimized_vecs, loss = targeted_attack(batch, patch, model, path=path)
+    patch_1e1, _, loss_1e1 = targeted_attack(batch, patch_start, model, lr=1e-1, path=path+'1e-1/')
+    patch_5e2, _, loss_5e2 = targeted_attack(batch, patch_start, model, lr=5e-2, path=path+'5e-2/')
+    patch_3e2, _, loss_3e2 = targeted_attack(batch, patch_start, model, lr=3e-2, path=path+'3e-2/')
+    patch_1e2, _, loss_1e2 = targeted_attack(batch, patch_start, model, lr=1e-2, path=path+'1e-2/')
 
     import matplotlib as mpl
     mpl.use('Agg')
@@ -152,17 +155,77 @@ if __name__=="__main__":
     with PdfPages(Path(path) / 'result.pdf') as pdf:
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.imshow(patch, cmap='gray')
+        ax.set_title('Custom patch 1, base')
+        ax.imshow(patch_start.detach().cpu().numpy()[0][0], cmap='gray')
         plt.axis('off')
-        # plt.savefig(path+'best_patch.jpg', dpi=500)
         pdf.savefig(fig)
         plt.close(fig)
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(loss)
+        ax.set_title('Custom patch 1, after optimization, lr=1e-1')
+        ax.imshow(patch_1e1, cmap='gray')
+        plt.axis('off')
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_title('Loss for custom patch 1, lr=1e-1')
+        ax.plot(loss_1e1)
         ax.set_xlabel('training steps')
-        ax.set_ylabel('loss: mean l2 distance')
+        ax.set_ylabel('mean l2 distance')
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_title('Custom patch 1, after optimization, lr=5e-2')
+        ax.imshow(patch_5e2, cmap='gray')
+        plt.axis('off')
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_title('Loss for custom patch 1, lr=5e-2')
+        ax.plot(loss_5e2)
+        ax.set_xlabel('training steps')
+        ax.set_ylabel('mean l2 distance')
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_title('Custom patch 1, after optimization, lr=3e-2')
+        ax.imshow(patch_3e2, cmap='gray')
+        plt.axis('off')
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_title('Loss for custom patch 1, lr=3e-2')
+        ax.plot(loss_3e2)
+        ax.set_xlabel('training steps')
+        ax.set_ylabel('mean l2 distance')
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_title('Custom patch 1, after optimization, lr=1e-2')
+        ax.imshow(patch_1e2, cmap='gray')
+        plt.axis('off')
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_title('Loss for custom patch 1, lr=1e-2')
+        ax.plot(loss_1e2)
+        ax.set_xlabel('training steps')
+        ax.set_ylabel('mean l2 distance')
         pdf.savefig(fig)
         plt.close(fig)
 
