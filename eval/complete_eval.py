@@ -94,7 +94,7 @@ def save_heatmap(outputs, name):
         plt.close()
 
     else:
-        fig, axs = plt.subplots(1, outputs.shape[0], figsize=(15,25))
+        fig, axs = plt.subplots(1, outputs.shape[0]+1, figsize=(15,5))
 
         images = []
 
@@ -182,6 +182,7 @@ def heatmap(base_batch, patches, path):
             outputs.append(np.array(curr_img_output))
 
         outputs = np.array(outputs)
+        np.save(path+f'patch{num}/'+'heatmap_data.npy', outputs)
         
         save_heatmap(outputs[..., 2], name=path+f'patch{num}/'+'heatmap_x.jpg')
         save_heatmap(outputs[..., 3], name=path+f'patch{num}/'+'heatmap_y.jpg')
@@ -353,7 +354,7 @@ if __name__ == '__main__':
     model.eval()
 
 
-    #dataset = load_dataset(path=dataset_path, batch_size=32, shuffle=False, drop_last=True, num_workers=0)
+    dataset = load_dataset(path=dataset_path, batch_size=32, shuffle=False, drop_last=True, num_workers=0)
 
     # custom_patch_1 = np.load("custom_patch_resized.npy")
     custom_patch_2 = np.load("misc/custom_patches/custom_patch2_resized.npy")
@@ -381,10 +382,29 @@ if __name__ == '__main__':
     path = "eval/custom_patches_eval/single_clear/"
     os.makedirs(path, exist_ok=True)
 
-    clear_img = image.imread('misc/clear_img.jpg')
+    clear_img = image.imread('misc/custom_clear_images/clear_img.jpg')
     clear_img = torch.FloatTensor(clear_img).unsqueeze(0).unsqueeze(0)
 
     plots_tx_ty(clear_img, patches, path)
     heatmap(clear_img, patches, path)
     noise_analysis_single(clear_img, patches, path)
     noise_analysis_batch(clear_img, patches)
+
+    # custom 5 clear images
+    path = "eval/custom_patches_eval/custom_5/"
+    os.makedirs(path, exist_ok=True)
+
+    clear_img_2 = dataset.dataset.__getitem__(1697)[0]
+
+    clear_img_3 = image.imread('misc/custom_clear_images/own_img1.png')
+    clear_img_3 = torch.FloatTensor(clear_img_3).unsqueeze(0) * 255.
+
+    clear_img_4 = image.imread('misc/custom_clear_images/own_img2.png')
+    clear_img_4 = torch.FloatTensor(clear_img_4).unsqueeze(0) * 255.
+
+    clear_img_5 = image.imread('misc/custom_clear_images/own_img3.jpg')
+    clear_img_5 = torch.FloatTensor(clear_img_5).unsqueeze(0) * 255.
+
+    batch_clear_img = torch.stack([clear_img.squeeze(0), clear_img_2, clear_img_3, clear_img_4, clear_img_5])
+
+    heatmap(batch_clear_img, patches, path)
