@@ -8,6 +8,10 @@ from Frontnet.DataProcessor import DataProcessor
 from Frontnet.Dataset import Dataset
 from torch.utils import data
 
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+
 def load_model(path, device, config):
     """
     Loads a saved Frontnet model from the given path with the set configuration and moves it to CPU/GPU.
@@ -66,8 +70,38 @@ def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_w
     return data_loader
 
 
+def calc_saliency(img, gt, model):
+    input = img.unsqueeze(0).requires_grad_(True)
+    prediction = torch.stack(model(input.float())).permute(1, 0, 2).squeeze(2).squeeze(0)
+
+    loss_x = torch.nn.L1Loss()(prediction[0], gt[0])
+    loss_y = torch.nn.L1Loss()(prediction[1], gt[1])
+    loss_z = torch.nn.L1Loss()(prediction[2], gt[2])
+    loss_phi = torch.nn.L1Loss()(prediction[3], gt[3])
+
+    loss = loss_x + loss_y + loss_z + loss_phi
+
+    loss.backward()
+
+    saliency = input.grad.data.abs()
+
+    return saliency
+
+def plot_saliency(img, gt, model):
+    saliency = calc_saliency(img, gt, model)
+    img = img[0].detach().cpu().numpy()
+    saliency = saliency[0][0].detach().cpu().numpy()
+
+    fig, ax = plt.subplots(1, 3, figsize=(8, 2))
+    ax[0].imshow(img, cmap='gray')
+    ax[1].set_title('Saliency Map')
+    ax[1].imshow(saliency, cmap='hot')
+    ax[2].set_title('Superimposed')
+    ax[2].imshow(img + (200000*saliency), cmap='gray')
+
+    return fig
+
 def plot_patch(patch, image, title='Plot', save=False, path='./'):
-    import matplotlib.pyplot as plt
 
     img_min, img_max = patch.batch_place(image)
 
@@ -91,3 +125,5 @@ def plot_patch(patch, image, title='Plot', save=False, path='./'):
         plt.close()
     else: 
         return f
+
+
