@@ -9,11 +9,10 @@ from patch_placement import place_patch
 
 from util import plot_saliency
 
-def gen_random_transformation(tx_min=-1, tx_max=1., ty_min=-1., ty_max=1., sf_min=0.1, sf_max=0.8):
+def gen_random_transformation(tx_min=-1, tx_max=1., ty_min=-1., ty_max=1., sf_min=0.1, sf_max=1.0):
     tx = torch.FloatTensor(1,).uniform_(tx_min, tx_max)
     ty = torch.FloatTensor(1,).uniform_(ty_min, ty_max)
-    #sf = torch.FloatTensor(1,).uniform_(sf_min, sf_max)
-    sf = torch.tensor(0.4)
+    sf = torch.FloatTensor(1,).uniform_(sf_min, sf_max)
 
     translation_vector = torch.stack([tx, ty]).unsqueeze(0)
     eye = torch.eye(2, 2).unsqueeze(0)
@@ -23,132 +22,62 @@ def gen_random_transformation(tx_min=-1, tx_max=1., ty_min=-1., ty_max=1., sf_mi
     return transformation_matrix
 
 
-def targeted_attack_patch(dataset, patch, model, lr=3-2, path="eval/targeted/"):
-    os.makedirs(path, exist_ok = True)
-    
+def targeted_attack_patch(dataset, patch, model, target, transformation_matrix, lr=3-2, path="eval/"):
+
     patch_t = patch.clone().requires_grad_(True)
     opt = torch.optim.Adam([patch_t], lr=lr)
 
-    target_low = torch.tensor(-2.0).to(patch.device)
-    #target_high = torch.tensor(2.0).to(patch.device)
-
-    # all_optimized_vec = []
-    # all_optimized_patches = []
-    # all_losses = []
-
     optimized_patches = []
     losses = []
-    #batch_loss = []
 
     try: 
 
-        for epoch in trange(200):
+        for epoch in trange(10):
 
             for _, data in enumerate(dataset):
                 batch, _ = data
                 batch = batch.to(patch.device)
-                # transformation_low = gen_random_transformation(tx_max=0., sf_min=0.3, sf_max=0.5).to(patch.device)
-                # transformation_high = gen_random_transformation(tx_min=0., ty_min=0.).to(patch.device)
 
-                #optimized_vec = []
+                optimized_patches.append(patch_t.clone().detach()[0][0].cpu().numpy())
 
-                for i in range(1):
+                mod_img = place_patch(batch.clone(), patch_t, transformation_matrix)
+                # add noise to patch+background
+                mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
+                # restrict patch+background to stay in range (0., 255.)
+                mod_img.clamp_(0., 255.)
 
-                    transformation_low = gen_random_transformation(tx_max=0., sf_min=0.3, sf_max=0.5).to(patch.device)
+                # predict x, y, z, yaw
+                prediction = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
-                    optimized_patches.append(patch_t.clone().detach()[0][0].cpu().numpy())
+                # calculate mean l2 losses (target, y) for all images in batch
+                all_l2 = torch.stack([torch.dist(target, i, p=2) for i in prediction[..., 1]])
+                loss = torch.mean(all_l2)
 
-                    mod_img_low = place_patch(batch.clone(), patch_t, transformation_low)
-                    # add noise to patch+background
-                    mod_img_low += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
-                    # restrict patch+background to stay in range (0., 255.)
-                    mod_img_low.clamp_(0., 255.)
+                losses.append(loss.clone().detach().cpu().item())
 
-                    # predict x, y, z, yaw
-                    prediction_low = torch.stack(model(mod_img_low)).permute(1, 0, 2).squeeze(2).squeeze(0)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
 
-                    #optimized_vec.append([scaling_sig.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction_mod[..., 1]).clone().detach().cpu().item()])
+                patch_t.data.clamp_(0., 255.)
 
-                    # calculate mean l2 losses (target, y) for all images in batch
-                    all_l2 = torch.stack([torch.dist(target_low, i, p=2) for i in prediction_low[..., 1]])
-                    loss_low = torch.mean(all_l2)
-
-                    # mod_img_high = place_patch(batch.clone(), patch_t, transformation_high)
-                    # # add noise to patch+background
-                    # mod_img_high += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
-                    # # restrict patch+background to stay in range (0., 255.)
-                    # mod_img_high.clamp_(0., 255.)
-
-                    # # predict x, y, z, yaw
-                    # prediction_high = torch.stack(model(mod_img_high)).permute(1, 0, 2).squeeze(2).squeeze(0)
-
-                    #optimized_vec.append([scaling_sig.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction_mod[..., 1]).clone().detach().cpu().item()])
-
-                    # calculate mean l2 losses (target, y) for all images in batch
-                    # all_l2 = torch.stack([torch.dist(target_high, i, p=2) for i in prediction_high[..., 1]])
-                    # loss_high = torch.mean(all_l2)
-
-                    loss = loss_low #+ loss_high
-
-
-                    losses.append(loss.clone().detach().cpu().item())
-
-                    opt.zero_grad()
-                    loss.backward()
-                    opt.step()
-
-                    patch_t.data.clamp_(0., 255.)
-
-                
-                #optimized_vec.append([scaling_sig.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction_mod[..., 1]).clone().detach().cpu().item()])
-                    optimized_patches.append(patch_t.clone().detach()[0][0].cpu().numpy())
-                
-                #batch_loss.append(np.mean(losses[-20:]))
+                optimized_patches.append(patch_t.clone().detach()[0][0].cpu().numpy())
+        
 
         losses = np.array(losses)
-        #batch_loss = np.array(batch_loss)
         optimized_patches = np.array(optimized_patches)
-            #all_optimized_vec.append(np.array(optimized_vec))
-            # all_optimized_patches.append(np.array(optimized_patches))
-            # all_losses.append(np.array(losses))
-
-            # all_optimized_a = np.array(all_optimized_vec)
-            # all_optimized_patches_a = np.array(all_optimized_patches)
-            # all_losses_a = np.array(all_losses)
 
     except KeyboardInterrupt:
         print("Aborting optimization...")    
-
-    #best_round, lowest_idx = np.argwhere(all_optimized_a[..., 3] == np.min(all_optimized_a[..., 3]))[0]
-
-    #best_patch = all_optimized_patches_a[best_round, lowest_idx]
-    #lowest_scale, lowest_tx, lowest_ty, lowest_y = all_optimized_a[best_round, lowest_idx]
-
-    #print("Best random iteration: ", best_round, lowest_idx)
-    #print("Best scale factor & translation vector: ", lowest_scale, lowest_tx, lowest_ty)
-    #print("Best prediciton: y = ", lowest_y)
-
-    # print("--Shape sanity checks--")
-    # print("patch shape: ", best_patch.shape)
-    # print("all patches shape: ", all_optimized_patches_a.shape)
-    # print()
-    # print("best round optimized vec shape: ", all_optimized_a[best_round].shape)
-    # print("all optimized vec shape: ", all_optimized_a.shape)
 
     best_idx = np.argmin(losses)
     best_patch = optimized_patches[best_idx]
 
     print(f"Found best patch at training step {best_idx}, loss: {losses[best_idx]}")
 
-    #np.save(path+'all_patches.npy', optimized_patches)
     np.save(path+'best_patch.npy', best_patch)
 
-
-    # np.save(path+'all_optimized_vec.npy', all_optimized_a)
-    # np.save(path+'best_optimized_vec.npy', all_optimized_a[best_round])
-
     np.save(path+'losses.npy', losses)
-    #np.save(path+'batch_losses.npy', batch_loss)
 
     return best_patch, losses
 
@@ -244,33 +173,32 @@ if __name__=="__main__":
     # dataset.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # dataset.dataset.labels.to(device)
 
-    path = 'eval/debug/epochs/'
+    path = 'eval/debug/fixed_transformation/'
+    os.makedirs(path, exist_ok = True)
 
     patch_start = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch_resized.npy")
     patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device)
-    
-    #patch_start = torch.ones(1, 1, 200, 200).to(device) * 255.
 
-    batch, gt = next(iter(dataset))
-    batch = batch.to(device)
+    lr = 1e-1
+    target = torch.tensor(-2.0).to(device)
+    rand_transformation = gen_random_transformation(sf_min=0.3, sf_max=0.8).to(device)
 
-    patch_1e1, loss_1e1 = targeted_attack_patch(dataset, patch_start, model, lr=5e-1, path=path+'5e-1/')
-    #patch_5e2, loss_5e2 = targeted_attack_patch(batch, patch_start, model, lr=5e-2, path=path+'5e-2/')
-    #patch_3e2, loss_3e2 = targeted_attack_patch(batch, patch_start, model, lr=3e-2, path=path+'3e-2/')
-    #patch_1e2, loss_1e2 = targeted_attack_patch(batch, patch_start, model, lr=1e-2, path=path+'1e-2/')
+    patch, loss = targeted_attack_patch(dataset, patch_start, model, target=target, transformation_matrix=rand_transformation, lr=lr, path=path)
 
-    rand_transformation = gen_random_transformation(tx_min=0.1, tx_max=0.7, sf_min=0.3, sf_max=0.5)
-    base_img = batch[0].unsqueeze(0)
+    base_img, ground_truth = dataset.dataset.__getitem__(0)
+    base_img = base_img.unsqueeze(0).to(device)
+    ground_truth = ground_truth.to(device)
+
     prediction = torch.stack(model(base_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
-    print(prediction)
+    #print(prediction.detach().cpu().numpy())
 
     mod_start = place_patch(base_img, patch_start, rand_transformation.to(device))
     prediction_start = torch.stack(model(mod_start)).permute(1, 0, 2).squeeze(2).squeeze(0)
-    print(prediction_start)
+    #print(prediction_start.detach().cpu().numpy())
     
-    mod_img = place_patch(base_img, torch.tensor(patch_1e1).unsqueeze(0).unsqueeze(0).to(device), rand_transformation.to(device))
+    mod_img = place_patch(base_img, torch.tensor(patch).unsqueeze(0).unsqueeze(0).to(device), rand_transformation.to(device))
     prediction_mod = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
-    print(prediction_mod)
+    #print(prediction_mod.detach().cpu().numpy())
 
     import matplotlib as mpl
     mpl.use('Agg')
@@ -282,7 +210,7 @@ if __name__=="__main__":
     with PdfPages(Path(path) / 'result.pdf') as pdf:
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title('Custom patch 1, base')
+        ax.set_title('Custom patch, trainingstep 0')
         ax.imshow(patch_start.detach().cpu().numpy()[0][0], cmap='gray')
         plt.axis('off')
         pdf.savefig(fig)
@@ -290,16 +218,16 @@ if __name__=="__main__":
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title('Custom patch 1, after optimization, lr=5e-1')
-        ax.imshow(patch_1e1, cmap='gray')
+        ax.set_title(f'Custom patch, after optimization, lr={lr}')
+        ax.imshow(patch, cmap='gray')
         plt.axis('off')
         pdf.savefig(fig)
         plt.close(fig)
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title('Loss for custom patch 1, lr=5e-1')
-        ax.plot(loss_1e1)
+        ax.set_title(f'Loss for custom patch 1, lr={lr}')
+        ax.plot(loss)
         ax.set_xlabel('training steps')
         ax.set_ylabel('mean l2 distance')
         pdf.savefig(fig)
@@ -307,23 +235,23 @@ if __name__=="__main__":
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title(f'Placed patch, after optimization, lr=5e-1')
+        ax.set_title(f'Placed patch, after optimization, lr={lr}')
         ax.imshow(mod_img[0][0].detach().cpu().numpy(), cmap='gray')
         plt.axis('off')
         pdf.savefig(fig)
         plt.close(fig)
 
-        fig = plot_saliency(base_img[0], gt[0].to(device), model)
+        fig = plot_saliency(base_img, ground_truth, model)
         fig.suptitle(f'y = {prediction[1].detach().cpu().item()}')
         pdf.savefig(fig)
         plt.close(fig)
 
-        fig = plot_saliency(mod_start[0], gt[0].to(device), model)
+        fig = plot_saliency(mod_start, ground_truth, model)
         fig.suptitle(f'y = {prediction_start[1].detach().cpu().item()}')
         pdf.savefig(fig)
         plt.close(fig)
 
-        fig = plot_saliency(mod_img[0], gt[0].to(device), model)
+        fig = plot_saliency(mod_img, ground_truth, model)
         fig.suptitle(f'y = {prediction_mod[1].detach().cpu().item()}')
         pdf.savefig(fig)
         plt.close(fig)
