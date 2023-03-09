@@ -149,6 +149,7 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, random=True
     best_run, lowest_idx = np.argwhere(all_optimized[..., 3] == np.min(all_optimized[..., 3]))[0]
 
     lowest_scale, lowest_tx, lowest_ty, _ = all_optimized[best_run, lowest_idx]
+    np.save(path+'best_transformation.npy', all_optimized[best_run, lowest_idx][:3])
 
     return lowest_scale, lowest_tx, lowest_ty, all_losses[best_run], all_optimized[best_run]
 
@@ -175,6 +176,12 @@ if __name__=="__main__":
     # load the patch from misc folder
     patch_start = np.load("misc/custom_patch_resized.npy")
     patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device)
+
+    # or start with a random patch
+    # patch_start = torch.rand(1, 1, 200, 200).to(device)
+
+    # or start from a white patch
+    # patch_start = torch.ones(1, 1, 200, 200).to(device) * 255.
 
     # set learning rate for the position and the optimization of the patch
     lr_pos = 3e-2
@@ -219,11 +226,11 @@ if __name__=="__main__":
     # get prediction for unaltered base image
     prediction = torch.stack(model(base_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
-    # place the initial, unaltered patch in base image and get prediction
+    # place the initial, unaltered patch in base image at the optimal position and get prediction
     mod_start = place_patch(base_img, patch_start, transformation_matrix.to(device))
     prediction_start = torch.stack(model(mod_start)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
-    # place the optimized patch in the image and get prediction
+    # place the optimized patch in the image at the optimal position and get prediction
     mod_img = place_patch(base_img, torch.tensor(patch).unsqueeze(0).unsqueeze(0).to(device), transformation_matrix.to(device))
     prediction_mod = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
