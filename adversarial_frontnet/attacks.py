@@ -9,24 +9,10 @@ from patch_placement import place_patch
 
 from util import plot_saliency
 
-def gen_random_transformation(tx_min=-1, tx_max=1., ty_min=-1., ty_max=1., sf_min=0.1, sf_max=1.0):
-    tx = torch.FloatTensor(1,).uniform_(tx_min, tx_max)
-    ty = torch.FloatTensor(1,).uniform_(ty_min, ty_max)
-    sf = torch.FloatTensor(1,).uniform_(sf_min, sf_max)
-
-    translation_vector = torch.stack([tx, ty]).unsqueeze(0)
-
-    eye = torch.eye(2, 2).unsqueeze(0)
-    rotation_matrix = eye * sf
-
-    transformation_matrix = torch.cat((rotation_matrix, translation_vector), dim=2)
-
-    return transformation_matrix
-
 def get_transformation(sf, tx, ty):
     translation_vector = torch.stack([tx, ty]).unsqueeze(0)
 
-    eye = torch.eye(2, 2).unsqueeze(0)
+    eye = torch.eye(2, 2).unsqueeze(0).to(sf.device)
     rotation_matrix = eye * sf
 
     transformation_matrix = torch.cat((rotation_matrix, translation_vector), dim=2)
@@ -92,51 +78,55 @@ def targeted_attack_patch(dataset, patch, model, target, transformation_matrix, 
 
     return best_patch, losses
 
-def targeted_attack_position(dataset, patch, model, target, lr=3e-2, random=True, tx_start=0., ty_start=0., sf_start=0.1, num_restarts=50, path="eval/targeted/"):
-
-    # not sure if this is actually correct
+def targeted_attack_position(dataset, patch, model, target, lr=3e-2, random=True, tx_start=0., ty_start=0., sf_start=0.1, num_restarts=50, path="eval/targeted/"): 
+    # get a random batch from the dataset
     batch, _ = next(iter(dataset))
     batch = batch.to(patch.device)
+    # TODO: Not sure if optimizing on a single batch is ok in this case!
 
     all_optimized = []
     all_losses = []
 
-    eye = torch.eye(2, 2).unsqueeze(0).to(patch.device)
+    # eye = torch.eye(2, 2).unsqueeze(0).to(patch.device)
 
     try: 
         for restart in trange(num_restarts):
             if random:
+                # start with random values 
                 tx = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
                 ty = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
                 scaling_factor = torch.FloatTensor(1,).uniform_(0.3, 0.5).to(patch.device).requires_grad_(True)
             else:
+                # start with previously optimized values, fine-tuning
                 tx = tx_start.clone().to(patch.device).requires_grad_(True)
                 ty = ty_start.clone().to(patch.device).requires_grad_(True)
                 scaling_factor = sf_start.clone().to(patch.device).requires_grad_(True)
             
-            opt = torch.optim.Adam([scaling_factor, tx, ty], lr=3e-2)
+            opt = torch.optim.Adam([scaling_factor, tx, ty], lr=lr)
 
             optimized_vec = []
             losses = []
             
+            # optimize for 200 training steps
             for i in range(200):
                 tx_tanh = torch.tanh(tx)
                 ty_tanh = torch.tanh(ty)
                 scaling_norm = 0.1 * (torch.tanh(scaling_factor) + 1) + 0.3 # normalizes scaling factor to range [0.3, 0.5]
 
-                translation_vector = torch.stack([tx_tanh, ty_tanh]).unsqueeze(0)
-                rotation_matrix = eye * scaling_norm
-                transformation_matrix = torch.cat((rotation_matrix, translation_vector), dim=2).float()
+                transformation_matrix = get_transformation(sf=scaling_norm, tx=tx_tanh, ty=ty_tanh)
 
                 mod_img = place_patch(batch, patch, transformation_matrix)
-                mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
+                # add noise to patch+background
+                mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)    
                 mod_img.clamp_(0., 255.)
 
-                prediction_mod = torch.stack(model(mod_img.float())).permute(1, 0, 2).squeeze(2).squeeze(0)
+                prediction = torch.stack(model(mod_img.float())).permute(1, 0, 2).squeeze(2).squeeze(0)
 
-                optimized_vec.append([scaling_norm.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction_mod[..., 1]).clone().detach().cpu().item()])
+                # save sf, tx, ty and mean y values for later plots
+                optimized_vec.append([scaling_norm.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction[..., 1]).clone().detach().cpu().item()])
 
-                all_l2 = torch.stack([torch.dist(target, i, p=2) for i in prediction_mod[..., 1]])
+                # calculate mean l2 losses (target, y) for all images in batch
+                all_l2 = torch.stack([torch.dist(target, i, p=2) for i in prediction[..., 1]])
                 loss = torch.mean(all_l2)
                 losses.append(loss.clone().detach().cpu().item())
 
@@ -145,7 +135,7 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, random=True
                 opt.step()
 
             
-            optimized_vec.append([scaling_norm.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction_mod[..., 1]).clone().detach().cpu().item()])
+            optimized_vec.append([scaling_norm.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction[..., 1]).clone().detach().cpu().item()])
             all_optimized.append(optimized_vec)
             all_losses.append(losses)
 
@@ -155,28 +145,21 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, random=True
     all_optimized = np.array(all_optimized)
     all_losses= np.array(all_losses)
 
+    # find lowest y and get best run index
     best_run, lowest_idx = np.argwhere(all_optimized[..., 3] == np.min(all_optimized[..., 3]))[0]
 
-    lowest_scale, lowest_tx, lowest_ty, lowest_y = all_optimized[best_run, lowest_idx]
-
-    print("Best scale factor & translation vector: ", lowest_scale, lowest_tx, lowest_ty)
-    print("Best prediciton: y = ", lowest_y)
-
-    # np.save(path+'best_optimized.npy', all_optimized[best_run])
-    # np.save(path+'best_losses.npy', all_losses[best_run])
-
+    lowest_scale, lowest_tx, lowest_ty, _ = all_optimized[best_run, lowest_idx]
 
     return lowest_scale, lowest_tx, lowest_ty, all_losses[best_run], all_optimized[best_run]
 
 
 if __name__=="__main__":
-    # import matplotlib.pyplot as plt
     import os
 
     from util import load_dataset, load_model
-    model_path = '/home/hanfeld/adversarial_frontnet/pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
+    model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
     model_config = '160x32'
-    dataset_path = '/home/hanfeld/adversarial_frontnet/pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle'
+    dataset_path = 'pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle'
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -186,50 +169,65 @@ if __name__=="__main__":
     # dataset.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # dataset.dataset.labels.to(device)
 
-    path = 'eval/debug/fixed_transformation/'
+    path = 'eval/debug/position&patch/'
     os.makedirs(path, exist_ok = True)
 
-    patch_start = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch_resized.npy")
+    # load the patch from misc folder
+    patch_start = np.load("misc/custom_patch_resized.npy")
     patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device)
 
+    # set learning rate for the position and the optimization of the patch
     lr_pos = 3e-2
     lr_patch = 1e-1
+
+    # define target # TODO: currently only the y-value can be targeted
     target = torch.tensor(-2.0).to(device)
-    # rand_transformation = gen_random_transformation(sf_min=0.3, sf_max=0.8).to(device)
 
-    scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(dataset, patch_start, model, target, lr=lr_patch, num_restarts=10, path=path)
+    # calculate initial optimal patch position on 50 random restarts
+    # TODO: optimization is super slow, could be due to:
+    # 1) moving values to cpu too often, 
+    # 2) the if random at the beginning of each restart?
+    print("Optimizing initial patch position...")
+    scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(dataset, patch_start, model, target, lr=lr_patch, num_restarts=50, path=path)
 
-    print(f"Optimized position of patch: sf={scale_factor}, tx={tx}, ty={ty}")
+    print(f"Optimized position: sf={scale_factor}, tx={tx}, ty={ty}")
     scale_factor = torch.tensor([scale_factor])
     tx = torch.tensor([tx])
     ty = torch.tensor([ty])
 
+    # calculate transformation matrix from single values
     transformation_matrix = get_transformation(scale_factor, tx, ty).to(device)
 
+    print("Optimizing patch on whole dataset for 10 epochs...")
     patch, loss_patch = targeted_attack_patch(dataset, patch_start, model, target=target, transformation_matrix=transformation_matrix, lr=lr_patch, path=path)
 
     #2nd iteration position
+    print("Fine-tune position again on 10 restarts...")
     scale_factor_2, tx_2, ty_2, loss_pos_2, optimized_vectors_2 = targeted_attack_position(dataset, patch_start, model, target, random=False, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_patch, num_restarts=10, path=path)
+    print(f"Optimized position: sf={scale_factor}, tx={tx}, ty={ty}")
     scale_factor_2 = torch.tensor([scale_factor_2])
     tx_2 = torch.tensor([tx_2])
     ty_2 = torch.tensor([ty_2])
     transformation_matrix = get_transformation(scale_factor_2, tx_2, ty_2).to(device)
 
+    # create result pdf
+    # get one image and ground-truth pose  
     base_img, ground_truth = dataset.dataset.__getitem__(0)
     base_img = base_img.unsqueeze(0).to(device)
     ground_truth = ground_truth.to(device)
 
+    # get prediction for unaltered base image
     prediction = torch.stack(model(base_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
-    #print(prediction.detach().cpu().numpy())
 
+    # place the initial, unaltered patch in base image and get prediction
     mod_start = place_patch(base_img, patch_start, transformation_matrix.to(device))
     prediction_start = torch.stack(model(mod_start)).permute(1, 0, 2).squeeze(2).squeeze(0)
-    #print(prediction_start.detach().cpu().numpy())
-    
+
+    # place the optimized patch in the image and get prediction
     mod_img = place_patch(base_img, torch.tensor(patch).unsqueeze(0).unsqueeze(0).to(device), transformation_matrix.to(device))
     prediction_mod = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
-    #print(prediction_mod.detach().cpu().numpy())
 
+    # TODO: move to seperate function, maybe open file after each optimization and add figures
     import matplotlib as mpl
     mpl.use('Agg')
     import matplotlib.pyplot as plt
