@@ -30,28 +30,31 @@ def targeted_attack_patch(dataset, patch, model, lr=3-2, path="eval/targeted/"):
     opt = torch.optim.Adam([patch_t], lr=lr)
 
     target_low = torch.tensor(-2.0).to(patch.device)
-    target_high = torch.tensor(2.0).to(patch.device)
+    #target_high = torch.tensor(2.0).to(patch.device)
 
-    all_optimized_vec = []
-    all_optimized_patches = []
-    all_losses = []
+    # all_optimized_vec = []
+    # all_optimized_patches = []
+    # all_losses = []
 
     optimized_patches = []
     losses = []
+    #batch_loss = []
 
     try: 
 
-        for epoch in trange(5):
+        for epoch in trange(200):
 
             for _, data in enumerate(dataset):
                 batch, _ = data
                 batch = batch.to(patch.device)
-                transformation_low = gen_random_transformation(tx_max=0., ty_max=0.).to(patch.device)
-                transformation_high = gen_random_transformation(tx_min=0., ty_min=0.).to(patch.device)
+                # transformation_low = gen_random_transformation(tx_max=0., sf_min=0.3, sf_max=0.5).to(patch.device)
+                # transformation_high = gen_random_transformation(tx_min=0., ty_min=0.).to(patch.device)
 
                 #optimized_vec = []
 
-                for i in range(20):
+                for i in range(1):
+
+                    transformation_low = gen_random_transformation(tx_max=0., sf_min=0.3, sf_max=0.5).to(patch.device)
 
                     optimized_patches.append(patch_t.clone().detach()[0][0].cpu().numpy())
 
@@ -70,22 +73,22 @@ def targeted_attack_patch(dataset, patch, model, lr=3-2, path="eval/targeted/"):
                     all_l2 = torch.stack([torch.dist(target_low, i, p=2) for i in prediction_low[..., 1]])
                     loss_low = torch.mean(all_l2)
 
-                    mod_img_high = place_patch(batch.clone(), patch_t, transformation_high)
-                    # add noise to patch+background
-                    mod_img_high += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
-                    # restrict patch+background to stay in range (0., 255.)
-                    mod_img_high.clamp_(0., 255.)
+                    # mod_img_high = place_patch(batch.clone(), patch_t, transformation_high)
+                    # # add noise to patch+background
+                    # mod_img_high += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
+                    # # restrict patch+background to stay in range (0., 255.)
+                    # mod_img_high.clamp_(0., 255.)
 
-                    # predict x, y, z, yaw
-                    prediction_high = torch.stack(model(mod_img_high)).permute(1, 0, 2).squeeze(2).squeeze(0)
+                    # # predict x, y, z, yaw
+                    # prediction_high = torch.stack(model(mod_img_high)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
                     #optimized_vec.append([scaling_sig.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction_mod[..., 1]).clone().detach().cpu().item()])
 
                     # calculate mean l2 losses (target, y) for all images in batch
-                    all_l2 = torch.stack([torch.dist(target_high, i, p=2) for i in prediction_high[..., 1]])
-                    loss_high = torch.mean(all_l2)
+                    # all_l2 = torch.stack([torch.dist(target_high, i, p=2) for i in prediction_high[..., 1]])
+                    # loss_high = torch.mean(all_l2)
 
-                    loss = loss_low + loss_high
+                    loss = loss_low #+ loss_high
 
 
                     losses.append(loss.clone().detach().cpu().item())
@@ -99,8 +102,11 @@ def targeted_attack_patch(dataset, patch, model, lr=3-2, path="eval/targeted/"):
                 
                 #optimized_vec.append([scaling_sig.clone().detach().cpu().item(), tx_tanh.clone().detach().cpu().item(), ty_tanh.clone().detach().cpu().item(), torch.mean(prediction_mod[..., 1]).clone().detach().cpu().item()])
                     optimized_patches.append(patch_t.clone().detach()[0][0].cpu().numpy())
+                
+                #batch_loss.append(np.mean(losses[-20:]))
 
         losses = np.array(losses)
+        #batch_loss = np.array(batch_loss)
         optimized_patches = np.array(optimized_patches)
             #all_optimized_vec.append(np.array(optimized_vec))
             # all_optimized_patches.append(np.array(optimized_patches))
@@ -134,7 +140,7 @@ def targeted_attack_patch(dataset, patch, model, lr=3-2, path="eval/targeted/"):
 
     print(f"Found best patch at training step {best_idx}, loss: {losses[best_idx]}")
 
-    np.save(path+'all_patches.npy', optimized_patches)
+    #np.save(path+'all_patches.npy', optimized_patches)
     np.save(path+'best_patch.npy', best_patch)
 
 
@@ -142,6 +148,7 @@ def targeted_attack_patch(dataset, patch, model, lr=3-2, path="eval/targeted/"):
     # np.save(path+'best_optimized_vec.npy', all_optimized_a[best_round])
 
     np.save(path+'losses.npy', losses)
+    #np.save(path+'batch_losses.npy', batch_loss)
 
     return best_patch, losses
 
@@ -237,17 +244,17 @@ if __name__=="__main__":
     # dataset.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # dataset.dataset.labels.to(device)
 
-    path = 'eval/debug/patch_bs_200/'
+    path = 'eval/debug/epochs/'
 
     patch_start = np.load("/home/hanfeld/adversarial_frontnet/misc/custom_patch_resized.npy")
     patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device)
     
-    # patch_start = torch.FloatTensor(1, 1, 200, 200).uniform_(0., 255.).to(device)
+    #patch_start = torch.ones(1, 1, 200, 200).to(device) * 255.
 
     batch, gt = next(iter(dataset))
     batch = batch.to(device)
 
-    patch_1e1, loss_1e1 = targeted_attack_patch(dataset, patch_start, model, lr=1e-1, path=path+'1e-1/')
+    patch_1e1, loss_1e1 = targeted_attack_patch(dataset, patch_start, model, lr=5e-1, path=path+'5e-1/')
     #patch_5e2, loss_5e2 = targeted_attack_patch(batch, patch_start, model, lr=5e-2, path=path+'5e-2/')
     #patch_3e2, loss_3e2 = targeted_attack_patch(batch, patch_start, model, lr=3e-2, path=path+'3e-2/')
     #patch_1e2, loss_1e2 = targeted_attack_patch(batch, patch_start, model, lr=1e-2, path=path+'1e-2/')
@@ -283,7 +290,7 @@ if __name__=="__main__":
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title('Custom patch 1, after optimization, lr=1e-1')
+        ax.set_title('Custom patch 1, after optimization, lr=5e-1')
         ax.imshow(patch_1e1, cmap='gray')
         plt.axis('off')
         pdf.savefig(fig)
@@ -291,7 +298,7 @@ if __name__=="__main__":
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title('Loss for custom patch 1, lr=1e-1')
+        ax.set_title('Loss for custom patch 1, lr=5e-1')
         ax.plot(loss_1e1)
         ax.set_xlabel('training steps')
         ax.set_ylabel('mean l2 distance')
@@ -300,7 +307,7 @@ if __name__=="__main__":
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title(f'Placed patch, after optimization, lr=1e-1')
+        ax.set_title(f'Placed patch, after optimization, lr=5e-1')
         ax.imshow(mod_img[0][0].detach().cpu().numpy(), cmap='gray')
         plt.axis('off')
         pdf.savefig(fig)
