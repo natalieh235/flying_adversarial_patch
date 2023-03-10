@@ -23,7 +23,7 @@ def norm_transformation(sf, tx, ty):
     ty_tanh = torch.tanh(ty)
     scaling_norm = 0.1 * (torch.tanh(sf) + 1) + 0.3 # normalizes scaling factor to range [0.3, 0.5]
 
-    return scale_norm, tx_tanh, ty_tanh
+    return scaling_norm, tx_tanh, ty_tanh
 
 
 def targeted_attack_patch(dataset, patch, model, target, transformation_matrix, lr=3-2, path="eval/"):
@@ -197,8 +197,12 @@ if __name__=="__main__":
     # define target # TODO: currently only the y-value can be targeted
     target = torch.tensor(-2.0).to(device)
 
-    optimization_pos = []
-    optimization_patch = []
+    optimization_pos_losses = []
+    optimization_pos_vectors = []
+
+    optimization_patches = []
+    optimization_patch_losses = []
+
 
     # calculate initial optimal patch position on 50 random restarts
     # TODO: optimization is super slow, could be due to:
@@ -207,7 +211,8 @@ if __name__=="__main__":
     print("Optimizing initial patch position...")
     scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(dataset, patch_start, model, target, lr=lr_patch, num_restarts=50, path=path)
     print(optimized_vectors.shape, loss_pos.shape)
-    optimization_pos.append([optimized_vectors, loss_pos])
+    optimization_pos_vectors.append(optimized_vectors)
+    optimization_pos_losses.append(loss_pos)
 
     scale_norm, tx_norm, ty_norm = norm_transformation(scale_factor, tx, ty)
 
@@ -225,13 +230,15 @@ if __name__=="__main__":
         print("Optimizing patch on whole dataset for 10 epochs...")
         patch, loss_patch = targeted_attack_patch(dataset, patch, model, target=target, transformation_matrix=transformation_matrix, lr=lr_patch, path=path)
 
-        optimization_patch.append([patch, loss_patch])
+        optimization_patches.append(patch)
+        optimization_patch_losses.append(loss_patch)
 
         patch = patch
     
         print("Fine-tune position...")
         scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(dataset, patch_start, model, target, random=False, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_patch, num_restarts=1, path=path)
-        optimization_pos.append([optimized_vectors, loss_pos])
+        optimization_pos_vectors.append(optimized_vectors)
+        optimization_pos_losses.append(loss_pos)
 
         scale_norm, tx_norm, ty_norm = norm_transformation(scale_factor, tx, ty)
         # print(f"Optimized position: sf={scale_factor}, tx={tx}, ty={ty}")
@@ -240,8 +247,18 @@ if __name__=="__main__":
         # ty_2 = torch.tensor([ty_2])
         transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
-    print(torch.stack(optimization_pos).shape)
-    print(torch.stack(optimization_patch).shape)
+    optimization_patches = torch.stack(optimization_patches)
+    optimization_patch_losses = torch.stack(optimization_patch_losses)
+
+    optimization_pos_vectors = torch.stack(optimization_pos_vectors)
+    optimization_pos_losses = torch.stack(optimization_pos_losses)
+
+    print("patches shape: ", optimization_patches.shape)
+    print("patch losses shape: ", optimization_patch_losses.shape)
+
+    print("vectors shape: ", optimization_pos_vectors.shape)
+    print("pos losses shape: ", optimization_pos_losses.shape)
+
     # create result pdf
     # get one image and ground-truth pose  
     base_img, ground_truth = dataset.dataset.__getitem__(0)
