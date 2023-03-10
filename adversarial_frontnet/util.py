@@ -1,7 +1,7 @@
 import torch
 import sys
 
-sys.path.insert(0,'/home/hanfeld/adversarial_frontnet/pulp-frontnet/PyTorch/')
+sys.path.insert(0,'pulp-frontnet/PyTorch/')
 from Frontnet.Frontnet import FrontnetModel
 
 from Frontnet.DataProcessor import DataProcessor
@@ -71,7 +71,7 @@ def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_w
 
 
 def calc_saliency(img, gt, model):
-    input = img.unsqueeze(0).requires_grad_(True)
+    input = img.requires_grad_(True)
     prediction = torch.stack(model(input.float())).permute(1, 0, 2).squeeze(2).squeeze(0)
 
     loss_x = torch.nn.L1Loss()(prediction[0], gt[0])
@@ -89,7 +89,7 @@ def calc_saliency(img, gt, model):
 
 def plot_saliency(img, gt, model):
     saliency = calc_saliency(img, gt, model)
-    img = img[0].detach().cpu().numpy()
+    img = img[0][0].detach().cpu().numpy()
     saliency = saliency[0][0].detach().cpu().numpy()
 
     fig, ax = plt.subplots(1, 3, figsize=(8, 2))
