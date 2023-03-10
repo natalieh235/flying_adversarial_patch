@@ -173,9 +173,9 @@ if __name__=="__main__":
 
     model = load_model(path=model_path, device=device, config=model_config)
     model.eval()
-    dataset = load_dataset(path=dataset_path, batch_size=20, shuffle=True, drop_last=True, num_workers=0)
-    # dataset.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
-    # dataset.dataset.labels.to(device)
+    train_set = load_dataset(path=dataset_path, batch_size=20, shuffle=True, drop_last=False, num_workers=0)
+    # train_set.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
+    # train_set.dataset.labels.to(device)
 
     path = 'eval/debug/loop_optim/'
     os.makedirs(path, exist_ok = True)
@@ -209,7 +209,7 @@ if __name__=="__main__":
     # 1) moving values to cpu too often, 
     # 2) the if random at the beginning of each restart?
     print("Optimizing initial patch position...")
-    scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(dataset, patch_start, model, target, lr=lr_patch, num_restarts=50, path=path)
+    scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch_start, model, target, lr=lr_patch, num_restarts=50, path=path)
     print(optimized_vectors.shape, loss_pos.shape)
     optimization_pos_vectors.append(optimized_vectors)
     optimization_pos_losses.append(loss_pos)
@@ -228,7 +228,7 @@ if __name__=="__main__":
     for train_iteration in trange(10):
         
         print("Optimizing patch on whole dataset for 10 epochs...")
-        patch, loss_patch = targeted_attack_patch(dataset, patch, model, target=target, transformation_matrix=transformation_matrix, lr=lr_patch, path=path)
+        patch, loss_patch = targeted_attack_patch(train_set, patch, model, target=target, transformation_matrix=transformation_matrix, lr=lr_patch, path=path)
 
         optimization_patches.append(patch)
         optimization_patch_losses.append(loss_patch)
@@ -236,7 +236,7 @@ if __name__=="__main__":
         patch = patch
     
         print("Fine-tune position...")
-        scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(dataset, patch_start, model, target, random=False, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_patch, num_restarts=1, path=path)
+        scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch_start, model, target, random=False, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_patch, num_restarts=1, path=path)
         optimization_pos_vectors.append(optimized_vectors)
         optimization_pos_losses.append(loss_pos)
 
@@ -261,7 +261,7 @@ if __name__=="__main__":
 
     # create result pdf
     # get one image and ground-truth pose  
-    base_img, ground_truth = dataset.dataset.__getitem__(0)
+    base_img, ground_truth = train_set.dataset.__getitem__(0)
     base_img = base_img.unsqueeze(0).to(device)
     ground_truth = ground_truth.to(device)
 

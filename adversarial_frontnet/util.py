@@ -41,7 +41,7 @@ def load_model(path, device, config):
 
     return model
 
-def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_workers = 1):
+def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_workers = 1, train=True):
     """
     Loads a dataset from the given path. 
     Parameters
@@ -60,8 +60,12 @@ def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_w
     """
     # load images and labels from the stored dataset
     [images, labels] = DataProcessor.ProcessTestData(path)
-    # create a torch dataset from the loaded data
-    dataset = Dataset(images, labels)
+
+    if train:
+        # create a torch dataset from the loaded data
+        dataset = Dataset(images[:3624], labels[:3624])
+    else:
+        dataset = Dataset(images[3624:], labels[3624:])
 
     # for quick and convinient access, create a torch DataLoader with the given parameters
     data_params = {'batch_size': batch_size, 'shuffle': shuffle, 'drop_last':drop_last, 'num_workers': num_workers}
