@@ -26,7 +26,7 @@ def norm_transformation(sf, tx, ty):
     return scaling_norm, tx_tanh, ty_tanh
 
 
-def targeted_attack_patch(dataset, patch, model, target, transformation_matrix, lr=3-2, path="eval/"):
+def targeted_attack_patch(dataset, patch, model, target, transformation_matrix, lr=3e-2, path="eval/"):
 
     patch_t = patch.clone().requires_grad_(True)
     opt = torch.optim.Adam([patch_t], lr=lr)
@@ -36,7 +36,7 @@ def targeted_attack_patch(dataset, patch, model, target, transformation_matrix, 
 
     try: 
 
-        for epoch in trange(10):
+        for epoch in range(5):
 
             for _, data in enumerate(dataset):
                 batch, _ = data
@@ -96,7 +96,7 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, random=True
     # eye = torch.eye(2, 2).unsqueeze(0).to(patch.device)
 
     try: 
-        for restart in trange(num_restarts):
+        for restart in range(num_restarts):
             if random:
                 # start with random values 
                 tx = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
@@ -203,11 +203,10 @@ if __name__=="__main__":
     optimization_patches = []
     optimization_patch_losses = []
 
+    optimization_patches.append(patch_start)
 
     # calculate initial optimal patch position on 50 random restarts
-    # TODO: optimization is super slow, could be due to:
-    # 1) moving values to cpu too often, 
-    # 2) the if random at the beginning of each restart?
+    # TODO: parallelize restarts for multiple CPU cores
     print("Optimizing initial patch position...")
     scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch_start, model, target, lr=lr_patch, num_restarts=50, path=path)
     print(optimized_vectors.shape, loss_pos.shape)
@@ -217,9 +216,6 @@ if __name__=="__main__":
     scale_norm, tx_norm, ty_norm = norm_transformation(scale_factor, tx, ty)
 
     print(f"Optimized position: sf={scale_norm}, tx={tx_norm}, ty={ty_norm}")
-    # scale_norm = torch.tensor([scale_norm])
-    # tx_norm = torch.tensor([tx_norm])
-    # ty_norm = torch.tensor([ty_norm])
 
     # calculate transformation matrix from single values
     transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
@@ -227,24 +223,21 @@ if __name__=="__main__":
     patch = patch_start.clone()
     for train_iteration in trange(10):
         
-        print("Optimizing patch on whole dataset for 10 epochs...")
+        print("Optimizing patch...")
         patch, loss_patch = targeted_attack_patch(train_set, patch, model, target=target, transformation_matrix=transformation_matrix, lr=lr_patch, path=path)
 
         optimization_patches.append(patch)
         optimization_patch_losses.append(loss_patch)
 
-        patch = patch
+        # patch = patch
     
-        print("Fine-tune position...")
-        scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch_start, model, target, random=False, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_patch, num_restarts=1, path=path)
+        print("Fine-tuning position...")
+        scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch, model, target, random=False, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_patch, num_restarts=1, path=path)
         optimization_pos_vectors.append(optimized_vectors)
         optimization_pos_losses.append(loss_pos)
 
         scale_norm, tx_norm, ty_norm = norm_transformation(scale_factor, tx, ty)
-        # print(f"Optimized position: sf={scale_factor}, tx={tx}, ty={ty}")
-        # scale_factor_2 = torch.tensor([scale_factor_2])
-        # tx_2 = torch.tensor([tx_2])
-        # ty_2 = torch.tensor([ty_2])
+
         transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
     optimization_patches = torch.stack(optimization_patches)
@@ -253,11 +246,29 @@ if __name__=="__main__":
     optimization_pos_vectors = torch.stack(optimization_pos_vectors)
     optimization_pos_losses = torch.stack(optimization_pos_losses)
 
-    print("patches shape: ", optimization_patches.shape)
-    print("patch losses shape: ", optimization_patch_losses.shape)
+    # print("patches shape: ", optimization_patches.shape)
+    # print("patch losses shape: ", optimization_patch_losses.shape)
 
-    print("vectors shape: ", optimization_pos_vectors.shape)
-    print("pos losses shape: ", optimization_pos_losses.shape)
+    # print("vectors shape: ", optimization_pos_vectors.shape)
+    # print("pos losses shape: ", optimization_pos_losses.shape)
+
+    print("Saving results...")
+    # prepare data for plots
+    all_y = optimization_pos_vectors[..., 3]
+    # normalize scale factor, tx and ty for plots
+    norm_optimized_vecs = [norm_transformation(optimization_pos_vectors[i,..., 0], optimization_pos_vectors[i,..., 1], optimization_pos_vectors[i,..., 2]) for i in range(optimization_pos_vectors.shape[0])]
+    
+    all_sf = torch.stack([norm_optimized_vecs[i][0] for i in range(len(norm_optimized_vecs))])
+    all_tx = torch.stack([norm_optimized_vecs[i][1] for i in range(len(norm_optimized_vecs))])
+    all_ty = torch.stack([norm_optimized_vecs[i][2] for i in range(len(norm_optimized_vecs))])
+
+
+    # save all results in numpy arrays for later use
+    np.save(path+'patches.npy', optimization_patches.squeeze(1).squeeze(1).cpu().numpy())
+    np.save(path+'patch_losses.npy', optimization_patch_losses.cpu().numpy())
+    np.save(path+'positions.npy', np.array([all_sf.cpu().numpy(), all_tx.cpu().numpy(), all_ty.cpu().numpy()]))
+    np.save(path+'predictions_y.npy', all_y.cpu().numpy())
+    np.save(path+'position_losses.npy', optimization_pos_losses.cpu().numpy())
 
     # create result pdf
     # get one image and ground-truth pose  
@@ -269,11 +280,11 @@ if __name__=="__main__":
     prediction = torch.stack(model(base_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
     # place the initial, unaltered patch in base image at the optimal position and get prediction
-    mod_start = place_patch(base_img, patch_start, transformation_matrix.to(device))
+    mod_start = place_patch(base_img, patch_start, transformation_matrix)
     prediction_start = torch.stack(model(mod_start)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
     # place the optimized patch in the image at the optimal position and get prediction
-    mod_img = place_patch(base_img, torch.tensor(patch).unsqueeze(0).unsqueeze(0).to(device), transformation_matrix.to(device))
+    mod_img = place_patch(base_img, patch, transformation_matrix)
     prediction_mod = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
     # TODO: move to seperate function, maybe open file after each optimization and add figures
@@ -285,120 +296,129 @@ if __name__=="__main__":
 
 
     with PdfPages(Path(path) / 'result.pdf') as pdf:
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title('Custom patch, trainingstep 0')
-        ax.imshow(patch_start.detach().cpu().numpy()[0][0], cmap='gray')
-        plt.axis('off')
-        pdf.savefig(fig)
-        plt.close(fig)
+        for idx, patch in enumerate(optimization_patches):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'Patch at training iteration {idx}')
+            ax.imshow(patch.cpu()[0][0], cmap='gray')
+            plt.axis('off')
+            pdf.savefig(fig)
+            plt.close(fig)
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title(f'Loss for best position, lr={lr_pos}')
-        ax.plot(loss_pos)
+        ax.set_title(f'Loss patch optimization for all iterations, lr={lr_patch}')
+        ax.plot(optimization_patch_losses.view(-1).cpu())
         ax.set_xlabel('training steps')
         ax.set_ylabel('mean l2 distance')
         pdf.savefig(fig)
         plt.close(fig)
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title('predicted mean y during training')
-        ax.plot(optimized_vectors[..., 3])
-        ax.set_xlabel('training steps')
-        ax.set_ylabel('mean y')
-        pdf.savefig(fig)
-        plt.close(fig)
+        for idx in range(len(optimization_patch_losses)):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'Loss patch optimization, iteration {idx}')
+            ax.plot(optimization_patch_losses[idx].cpu())
+            ax.set_xlabel('training steps')
+            ax.set_ylabel('mean l2 distance')
+            pdf.savefig(fig)
+            plt.close(fig)
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title('optimization scale factor')
-        ax.plot(optimized_vectors[..., 0])
+        ax.set_title(f'Predicted y for all iterations')
+        ax.plot(all_y.view(-1).cpu())
+        ax.set_xlabel('training steps')
+        ax.set_ylabel('y')
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        for idx in range(len(all_y)):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'Predicted y, iteration {idx}')
+            ax.plot(all_y[idx].cpu())
+            ax.set_xlabel('training steps')
+            ax.set_ylabel('y')
+            pdf.savefig(fig)
+            plt.close(fig)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_title(f'Loss position optimization for all iterations, lr={lr_pos}')
+        ax.plot(optimization_pos_losses.view(-1).cpu())
+        ax.set_xlabel('training steps')
+        ax.set_ylabel('mean l2 distance')
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        for idx in range(len(optimization_pos_losses)):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'Loss patch optimization, iteration {idx}')
+            ax.plot(optimization_pos_losses[idx].cpu())
+            ax.set_xlabel('training steps')
+            ax.set_ylabel('mean l2 distance')
+            pdf.savefig(fig)
+            plt.close(fig)
+
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_title(f'scale factor for all iterations')
+        ax.plot(all_sf.view(-1).cpu())
         ax.set_xlabel('training steps')
         ax.set_ylabel('scale factor')
         pdf.savefig(fig)
         plt.close(fig)
 
+        for idx in range(all_sf.shape[0]):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'scale factor, iteration {idx}')
+            ax.plot(all_sf[idx].cpu())
+            ax.set_xlabel('training steps')
+            ax.set_ylabel('scale factor')
+            pdf.savefig(fig)
+            plt.close(fig)
+
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title('optimization tx')
-        ax.plot(optimized_vectors[..., 1])
+        ax.set_title(f'tx for all iterations')
+        ax.plot(all_tx.view(-1).cpu())
         ax.set_xlabel('training steps')
         ax.set_ylabel('tx')
         pdf.savefig(fig)
         plt.close(fig)
 
+        for idx in range(all_tx.shape[0]):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'tx, iteration {idx}')
+            ax.plot(all_tx[idx].cpu())
+            ax.set_xlabel('training steps')
+            ax.set_ylabel('tx')
+            pdf.savefig(fig)
+            plt.close(fig)
+
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title('optimization ty')
-        ax.plot(optimized_vectors[..., 2])
+        ax.set_title(f'ty for all iterations')
+        ax.plot(all_ty.view(-1).cpu())
         ax.set_xlabel('training steps')
         ax.set_ylabel('ty')
         pdf.savefig(fig)
         plt.close(fig)
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title(f'Custom patch, after optimization, lr={lr_patch}')
-        ax.imshow(patch, cmap='gray')
-        plt.axis('off')
-        pdf.savefig(fig)
-        plt.close(fig)
-
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title(f'Loss for custom patch 1, lr={lr_patch}')
-        ax.plot(loss_patch)
-        ax.set_xlabel('training steps')
-        ax.set_ylabel('mean l2 distance')
-        pdf.savefig(fig)
-        plt.close(fig)
-
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title(f'Loss for best position, 2nd iteration, lr={lr_pos}')
-        ax.plot(loss_pos_2)
-        ax.set_xlabel('training steps')
-        ax.set_ylabel('mean l2 distance')
-        pdf.savefig(fig)
-        plt.close(fig)
-
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title('predicted mean y during training')
-        ax.plot(optimized_vectors_2[..., 3])
-        ax.set_xlabel('training steps')
-        ax.set_ylabel('mean y')
-        pdf.savefig(fig)
-        plt.close(fig)
-
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title('optimization scale factor')
-        ax.plot(optimized_vectors_2[..., 0])
-        ax.set_xlabel('training steps')
-        ax.set_ylabel('scale factor')
-        pdf.savefig(fig)
-        plt.close(fig)
-
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title('optimization tx')
-        ax.plot(optimized_vectors_2[..., 1])
-        ax.set_xlabel('training steps')
-        ax.set_ylabel('tx')
-        pdf.savefig(fig)
-        plt.close(fig)
-
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title('optimization ty')
-        ax.plot(optimized_vectors_2[..., 2])
-        ax.set_xlabel('training steps')
-        ax.set_ylabel('ty')
-        pdf.savefig(fig)
-        plt.close(fig)
+        for idx in range(len(all_ty)):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'ty, iteration {idx}')
+            ax.plot(all_ty[idx].cpu())
+            ax.set_xlabel('training steps')
+            ax.set_ylabel('ty')
+            pdf.savefig(fig)
+            plt.close(fig)
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
@@ -422,104 +442,3 @@ if __name__=="__main__":
         fig.suptitle(f'y = {prediction_mod[1].detach().cpu().item()}')
         pdf.savefig(fig)
         plt.close(fig)
-
-
-
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111)
-        # ax.set_title('Custom patch 1, after optimization, lr=5e-2')
-        # ax.imshow(patch_5e2, cmap='gray')
-        # plt.axis('off')
-        # pdf.savefig(fig)
-        # plt.close(fig)
-
-
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111)
-        # ax.set_title('Loss for custom patch 1, lr=5e-2')
-        # ax.plot(loss_5e2)
-        # ax.set_xlabel('training steps')
-        # ax.set_ylabel('mean l2 distance')
-        # pdf.savefig(fig)
-        # plt.close(fig)
-
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111)
-        # ax.set_title('Custom patch 1, after optimization, lr=3e-2')
-        # ax.imshow(patch_3e2, cmap='gray')
-        # plt.axis('off')
-        # pdf.savefig(fig)
-        # plt.close(fig)
-
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111)
-        # ax.set_title('Loss for custom patch 1, lr=3e-2')
-        # ax.plot(loss_3e2)
-        # ax.set_xlabel('training steps')
-        # ax.set_ylabel('mean l2 distance')
-        # pdf.savefig(fig)
-        # plt.close(fig)
-
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111)
-        # ax.set_title('Custom patch 1, after optimization, lr=1e-2')
-        # ax.imshow(patch_1e2, cmap='gray')
-        # plt.axis('off')
-        # pdf.savefig(fig)
-        # plt.close(fig)
-
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111)
-        # ax.set_title('Loss for custom patch 1, lr=1e-2')
-        # ax.plot(loss_1e2)
-        # ax.set_xlabel('training steps')
-        # ax.set_ylabel('mean l2 distance')
-        # pdf.savefig(fig)
-        # plt.close(fig)
-
-
-
-
-
-
-### depracated
-# def untargeted_attack(image, patch, model, transformation_matrix, path='eval/untargeted/'): # angle, scale, tx, ty,
-#     # initialize optimizer
-#     opt = torch.optim.Adam([transformation_matrix], lr=1e-1)
-#     prediction = torch.concat(model(image)).squeeze(1)
-    
-    
-#     new_image = place_patch(image, patch, transformation_matrix)
-#     # pred_attack = torch.concat(model(new_image)).squeeze(1)
-#     # loss = -torch.dist(prediction, pred_attack, p=2)
-
-#     losses = []
-#     # losses.append(loss.detach().numpy())
-
-#     i = 0.
-#     try:
-#         while True:
-#             i += 1
-#             pred_attack= torch.concat(model(new_image)).squeeze(1)
-#             loss = -torch.dist(prediction, pred_attack, p=2)
-#             losses.append(loss.detach().numpy())
-#             opt.zero_grad()
-#             loss.backward(retain_graph=True)
-#             opt.step()
-
-#             # patch.data.clamp_(0., 255.)
-#             new_image = place_patch(image, patch, transformation_matrix)
-#             if i % 100 == 0:
-#                 print("step %d, loss %.6f" % (i, loss))
-#                 print("transformation matrix: ", transformation_matrix.detach().numpy())
-#                 #print("step %d, loss %.6f, angle %.2f, scale %.3f, tx %.3f, ty %0.3f" % (i, loss, np.degrees(angle.detach().numpy()), scale.detach().numpy(), tx.detach().numpy(), ty.detach().numpy()))
-#     except KeyboardInterrupt:
-#         print("Aborting optimization...")    
-
-#     print("Bing!")
-#     print("Last loss: ", loss.detach().cpu().numpy())
-#     print("Last prediciton: ", pred_attack)
-
-#     np.save(path+'losses_test', losses)
-
-#     return patch, transformation_matrix #[angle, scale, tx, ty]
