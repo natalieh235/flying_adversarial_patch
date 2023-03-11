@@ -177,7 +177,7 @@ if __name__=="__main__":
     # train_set.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # train_set.dataset.labels.to(device)
 
-    path = 'eval/debug/loop_optim/'
+    path = 'eval/debug/lower_lr/'
     os.makedirs(path, exist_ok = True)
 
     # load the patch from misc folder
@@ -185,7 +185,7 @@ if __name__=="__main__":
     patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device)
 
     # or start with a random patch
-    # patch_start = torch.rand(1, 1, 200, 200).to(device)
+    # patch_start = torch.rand(1, 1, 200, 200).to(device) * 255.
 
     # or start from a white patch
     # patch_start = torch.ones(1, 1, 200, 200).to(device) * 255.
@@ -208,7 +208,7 @@ if __name__=="__main__":
     # calculate initial optimal patch position on 50 random restarts
     # TODO: parallelize restarts for multiple CPU cores
     print("Optimizing initial patch position...")
-    scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch_start, model, target, lr=lr_patch, num_restarts=50, path=path)
+    scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch_start, model, target, lr=lr_pos, num_restarts=50, path=path)
     print(optimized_vectors.shape, loss_pos.shape)
     optimization_pos_vectors.append(optimized_vectors)
     optimization_pos_losses.append(loss_pos)
@@ -221,6 +221,9 @@ if __name__=="__main__":
     transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
     patch = patch_start.clone()
+
+    # decrease position learning rate for fine tuning
+    lr_pos = 1e-3
     for train_iteration in trange(10):
         
         print("Optimizing patch...")
@@ -232,7 +235,7 @@ if __name__=="__main__":
         # patch = patch
     
         print("Fine-tuning position...")
-        scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch, model, target, random=False, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_patch, num_restarts=1, path=path)
+        scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch, model, target, random=False, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_pos, num_restarts=1, path=path)
         optimization_pos_vectors.append(optimized_vectors)
         optimization_pos_losses.append(loss_pos)
 
