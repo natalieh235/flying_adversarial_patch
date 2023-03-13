@@ -65,7 +65,6 @@ def targeted_attack_patch(dataset, patch, model, target, transformation_matrix, 
                 opt.step()
 
                 patch_t.data.clamp_(0., 255.)
-                train_steps += 1
 
                 optimized_patches.append(patch_t.clone().detach())
         
@@ -88,7 +87,7 @@ def targeted_attack_patch(dataset, patch, model, target, transformation_matrix, 
 
 def targeted_attack_position(dataset, patch, model, target, lr=3e-2, random=True, tx_start=0., ty_start=0., sf_start=0.1, num_restarts=50, path="eval/targeted/"): 
     # get a batch consisting of all images in the dataset
-    batch, _ = dataset.dataset[:20]
+    batch, _ = dataset.dataset[:1000]
     batch = batch.to(patch.device)
     
 
@@ -179,7 +178,7 @@ if __name__=="__main__":
     # train_set.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # train_set.dataset.labels.to(device)
 
-    path = 'eval/debug/whisker_plots/'
+    path = 'eval/debug/pos/'
     os.makedirs(path, exist_ok = True)
 
     # load the patch from misc folder
@@ -210,7 +209,7 @@ if __name__=="__main__":
     # calculate initial optimal patch position on 50 random restarts
     # TODO: parallelize restarts for multiple CPU cores
     print("Optimizing initial patch position...")
-    scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch_start, model, target, lr=lr_pos, num_restarts=2, path=path)
+    scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch_start, model, target, lr=lr_pos, num_restarts=50, path=path)
     print(optimized_vectors.shape, loss_pos.shape)
     optimization_pos_vectors.append(optimized_vectors)
     optimization_pos_losses.append(loss_pos)
@@ -226,7 +225,7 @@ if __name__=="__main__":
 
     # decrease position learning rate for fine tuning
     #lr_pos = 1e-3
-    for train_iteration in trange(2):
+    for train_iteration in trange(10):
         
         print("Optimizing patch...")
         patch, loss_patch = targeted_attack_patch(train_set, patch, model, target=target, transformation_matrix=transformation_matrix, lr=lr_patch, path=path)
@@ -237,7 +236,7 @@ if __name__=="__main__":
         # patch = patch
     
         print("Optimizing position...")
-        scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch, model, target, random=False, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_pos, num_restarts=1, path=path)
+        scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch, model, target, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_pos, num_restarts=10, path=path)
         optimization_pos_vectors.append(optimized_vectors)
         optimization_pos_losses.append(loss_pos)
 
@@ -299,7 +298,7 @@ if __name__=="__main__":
 
     boxplot_data = [pred_base[..., 1].detach().cpu().numpy(), pred_start_patch[..., 1].detach().cpu().numpy(), pred_opt_patch[..., 1].detach().cpu().numpy()]
 
-    # vline_idx_patch = [i*len(train_set) for i in range(1, 2)]
+    vline_idx_patch = [i*len(loss_patch) for i in range(1, 10)]
 
     # create result pdf
     # get one image and ground-truth pose  
@@ -340,7 +339,7 @@ if __name__=="__main__":
         ax = fig.add_subplot(111)
         ax.set_title(f'Loss patch optimization for all iterations, lr={lr_patch}')
         ax.plot(optimization_patch_losses.view(-1).cpu())
-        # ax.vlines(vline_idx_patch, 0, 1, transform=ax.get_xaxis_transform(), colors='r')
+        ax.vlines(vline_idx_patch, 0, 1, transform=ax.get_xaxis_transform(), colors='r')
         ax.set_xlabel('training steps')
         ax.set_ylabel('mean l2 distance')
         pdf.savefig(fig)
@@ -356,14 +355,14 @@ if __name__=="__main__":
         #     pdf.savefig(fig)
         #     plt.close(fig)
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title(f'Predicted y for all iterations')
-        ax.plot(all_y.view(-1).cpu())
-        ax.set_xlabel('training steps')
-        ax.set_ylabel('y')
-        pdf.savefig(fig)
-        plt.close(fig)
+        # fig = plt.figure()
+        # ax = fig.add_subplot(111)
+        # ax.set_title(f'Predicted y for all iterations')
+        # ax.plot(all_y.view(-1).cpu())
+        # ax.set_xlabel('training steps')
+        # ax.set_ylabel('y')
+        # pdf.savefig(fig)
+        # plt.close(fig)
 
         # for idx in range(len(all_y)):
         #     fig = plt.figure()
@@ -375,14 +374,14 @@ if __name__=="__main__":
         #     pdf.savefig(fig)
         #     plt.close(fig)
 
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111)
-        # ax.set_title(f'Loss position optimization for all iterations, lr={lr_pos}')
-        # ax.plot(optimization_pos_losses.view(-1).cpu())
-        # ax.set_xlabel('training steps')
-        # ax.set_ylabel('mean l2 distance')
-        # pdf.savefig(fig)
-        # plt.close(fig)
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_title(f'Loss position optimization for all iterations, lr={lr_pos}')
+        ax.plot(optimization_pos_losses.view(-1).cpu())
+        ax.set_xlabel('training steps')
+        ax.set_ylabel('mean l2 distance')
+        pdf.savefig(fig)
+        plt.close(fig)
 
         # for idx in range(len(optimization_pos_losses)):
         #     fig = plt.figure()
@@ -476,7 +475,7 @@ if __name__=="__main__":
         plt.close(fig)
 
         fig, ax = plt.subplots(1, 1)
-        ax.boxplot(boxplot_data, 1, 'D', labels=['base images', 'starting patch', 'optimized patch'])
+        ax.boxplot(boxplot_data, 1, 'D', labels=['base images', 'starting patch @ optimal position', 'optimized patch @ optimal position'])
         ax.set_title('boxplots for y')
         ax.set_ylabel('y')
         # axs[0].set_title('base images')
