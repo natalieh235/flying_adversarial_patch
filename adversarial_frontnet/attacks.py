@@ -177,7 +177,7 @@ if __name__=="__main__":
     # train_set.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # train_set.dataset.labels.to(device)
 
-    path = 'eval/debug/lower_lr/'
+    path = 'eval/debug/whisker_plots/'
     os.makedirs(path, exist_ok = True)
 
     # load the patch from misc folder
@@ -272,6 +272,25 @@ if __name__=="__main__":
     np.save(path+'positions.npy', np.array([all_sf.cpu().numpy(), all_tx.cpu().numpy(), all_ty.cpu().numpy()]))
     np.save(path+'predictions_y.npy', all_y.cpu().numpy())
     np.save(path+'position_losses.npy', optimization_pos_losses.cpu().numpy())
+
+
+    # evaluation on test set
+    print("Evaluation...")
+    test_set = load_dataset(path=dataset_path, batch_size=403, shuffle=True, drop_last=False, train=False, num_workers=0)
+
+    test_batch, test_gt = next(iter(test_set))
+    test_batch = test_batch.to(device)
+
+    mod_img = place_patch(test_batch, patch, transformation_matrix)
+    # add noise to patch+background
+    # mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)    
+    mod_img.clamp_(0., 255.)
+
+    prediction = torch.stack(model(mod_img.float())).permute(1, 0, 2).squeeze(2).squeeze(0)
+    pred_y = prediction[..., 1].detach().cpu().numpy()
+
+    rel_y = pred_y - target.cpu().numpy()
+
 
     # create result pdf
     # get one image and ground-truth pose  
@@ -443,5 +462,13 @@ if __name__=="__main__":
 
         fig = plot_saliency(mod_img, ground_truth, model)
         fig.suptitle(f'y = {prediction_mod[1].detach().cpu().item()}')
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        fig, axs = plt.subplots(1, 2)
+        axs[0].boxplot(pred_y, 1, 'D')
+        axs[0].set_title('predicted y')
+        axs[1].boxplot(rel_y, 1, 'D')
+        axs[1].set_title('y - target y')
         pdf.savefig(fig)
         plt.close(fig)
