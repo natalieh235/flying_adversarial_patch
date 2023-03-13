@@ -87,8 +87,8 @@ def targeted_attack_patch(dataset, patch, model, target, transformation_matrix, 
 
 def targeted_attack_position(dataset, patch, model, target, lr=3e-2, random=True, tx_start=0., ty_start=0., sf_start=0.1, num_restarts=50, path="eval/targeted/"): 
     # get a batch consisting of all images in the dataset
-    batch, _ = dataset.dataset[:1000]
-    batch = batch.to(patch.device)
+    # batch, _ = dataset.dataset[:1000]
+    # batch = batch.to(patch.device)
     
 
     all_optimized = []
@@ -115,28 +115,33 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, random=True
             losses = []
             
             # optimize for 200 training steps
-            for i in range(200):
-                scaling_norm, tx_tanh, ty_tanh = norm_transformation(scaling_factor, tx, ty)
-                transformation_matrix = get_transformation(sf=scaling_norm, tx=tx_tanh, ty=ty_tanh)
+            #for i in range(200):
+            for epoch in range(5):
 
-                mod_img = place_patch(batch, patch, transformation_matrix)
-                # add noise to patch+background
-                mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)    
-                mod_img.clamp_(0., 255.)
+                for _, data in enumerate(dataset):
+                    batch, _ = data
+                    batch = batch.to(patch.device)
+                    scaling_norm, tx_tanh, ty_tanh = norm_transformation(scaling_factor, tx, ty)
+                    transformation_matrix = get_transformation(sf=scaling_norm, tx=tx_tanh, ty=ty_tanh)
 
-                prediction = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
+                    mod_img = place_patch(batch, patch, transformation_matrix)
+                    # add noise to patch+background
+                    mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)    
+                    mod_img.clamp_(0., 255.)
 
-                # save sf, tx, ty and mean y values for later plots
-                optimized_vec.append(torch.cat([scaling_factor.clone().detach(), tx.clone().detach(), ty.clone().detach(), torch.mean(prediction[..., 1]).clone().detach().unsqueeze(0)]))
+                    prediction = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
-                # calculate mean l2 losses (target, y) for all images in batch
-                all_l2 = torch.sqrt(((prediction[..., 1]-target)**2)) # got rid of slower list comprehension
-                loss = torch.mean(all_l2)
-                losses.append(loss.clone().detach())
+                    # save sf, tx, ty and mean y values for later plots
+                    optimized_vec.append(torch.cat([scaling_factor.clone().detach(), tx.clone().detach(), ty.clone().detach(), torch.mean(prediction[..., 1]).clone().detach().unsqueeze(0)]))
 
-                opt.zero_grad()
-                loss.backward()
-                opt.step()
+                    # calculate mean l2 losses (target, y) for all images in batch
+                    all_l2 = torch.sqrt(((prediction[..., 1]-target)**2)) # got rid of slower list comprehension
+                    loss = torch.mean(all_l2)
+                    losses.append(loss.clone().detach())
+
+                    opt.zero_grad()
+                    loss.backward()
+                    opt.step()
 
             
             optimized_vec.append(torch.cat([scaling_factor.clone().detach(), tx.clone().detach(), ty.clone().detach(), torch.mean(prediction[..., 1]).clone().detach().unsqueeze(0)]))
@@ -178,7 +183,7 @@ if __name__=="__main__":
     # train_set.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # train_set.dataset.labels.to(device)
 
-    path = 'eval/debug/pos/'
+    path = 'eval/debug/position/sev_epochs'
     os.makedirs(path, exist_ok = True)
 
     # load the patch from misc folder
@@ -209,7 +214,7 @@ if __name__=="__main__":
     # calculate initial optimal patch position on 50 random restarts
     # TODO: parallelize restarts for multiple CPU cores
     print("Optimizing initial patch position...")
-    scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch_start, model, target, lr=lr_pos, num_restarts=50, path=path)
+    scale_factor, tx, ty, loss_pos, optimized_vectors = targeted_attack_position(train_set, patch_start, model, target, lr=lr_pos, num_restarts=10, path=path)
     print(optimized_vectors.shape, loss_pos.shape)
     optimization_pos_vectors.append(optimized_vectors)
     optimization_pos_losses.append(loss_pos)
@@ -475,8 +480,8 @@ if __name__=="__main__":
         plt.close(fig)
 
         fig, ax = plt.subplots(1, 1)
-        ax.boxplot(boxplot_data, 1, 'D', labels=['base images', 'starting patch @ optimal position', 'optimized patch @ optimal position'])
-        ax.set_title('boxplots for y')
+        ax.boxplot(boxplot_data, 1, 'D', labels=['base images', 'starting patch', 'optimized patch'])
+        ax.set_title('boxplots for y, patches placed at optimal position')
         ax.set_ylabel('y')
         # axs[0].set_title('base images')
         # axs[1].boxplot(rel_y, 1, 'D')
