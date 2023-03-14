@@ -198,10 +198,10 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
 
     return best_scaling, best_tx, best_ty, best_loss#all_losses[best_run], all_optimized[best_run]
 
-def calc_test_loss(test_set, patch, transformation_matrix, model):
+def calc_eval_loss(dataset, patch, transformation_matrix, model):
     actual_loss = torch.tensor(0.).to(patch.device)
 
-    for _, data in enumerate(test_set):
+    for _, data in enumerate(dataset):
         batch, _ = data
         batch = batch.to(patch.device)
 
@@ -213,7 +213,7 @@ def calc_test_loss(test_set, patch, transformation_matrix, model):
         loss = torch.mean(all_l2)
         actual_loss += loss.clone().detach()
     
-    actual_loss /= len(test_set)
+    actual_loss /= len(dataset)
 
     return actual_loss
 
@@ -270,6 +270,7 @@ if __name__=="__main__":
     optimization_patches = []
     optimization_patch_losses = []
 
+    train_losses = []
     test_losses = []
 
     optimization_patches.append(patch_start)
@@ -293,7 +294,7 @@ if __name__=="__main__":
 
     # decrease position learning rate for fine tuning
     #lr_pos = 1e-3
-    for train_iteration in trange(10):
+    for train_iteration in trange(5):
         
         print("Optimizing patch...")
         patch, loss_patch = targeted_attack_patch(train_set, patch, model, scale_factor, tx, ty, target=target, lr=lr_patch, epochs=10, path=path)
@@ -312,7 +313,9 @@ if __name__=="__main__":
         transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
         # TODO: compute loss for testing here, using latest patch and scale factor
-        test_loss = calc_test_loss(test_set, patch, transformation_matrix, model)
+        train_loss = calc_eval_loss(train_set, patch, transformation_matrix, model)
+        train_losses.append(train_loss)
+        test_loss = calc_eval_loss(test_set, patch, transformation_matrix, model)
         test_losses.append(test_loss)
 
     #print(optimization_patch_losses)
@@ -322,7 +325,8 @@ if __name__=="__main__":
     #print(optimization_pos_vectors)
     optimization_pos_vectors = torch.stack(optimization_pos_vectors)
     optimization_pos_losses = torch.stack(optimization_pos_losses)
-
+    
+    train_losses = torch.stack(train_losses)
     test_losses = torch.stack(test_losses)
 
     # print("patches shape: ", optimization_patches.shape)
@@ -356,7 +360,7 @@ if __name__=="__main__":
     scale_norm, tx_norm, ty_norm = norm_transformation(scale_factor, tx, ty)
     transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
-    test_batch, test_gt = next(iter(test_set))
+    test_batch, test_gt = test_set.dataset[:]
     test_batch = test_batch.to(device)
 
     pred_base = torch.stack(model(test_batch.float())).permute(1, 0, 2).squeeze(2).squeeze(0)
@@ -462,8 +466,10 @@ if __name__=="__main__":
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title(f'Loss on test set after each patch & position optimization')
-        ax.plot(test_losses.view(-1).cpu())
+        ax.set_title(f'Losses after each patch & position optimization')
+        ax.plot(train_losses.view(-1).cpu(), label='train set')
+        ax.plot(test_losses.view(-1).cpu(), label='test set')
+        ax.legend()
         ax.set_xlabel('iteration')
         ax.set_ylabel('mean l2 distance')
         pdf.savefig(fig)
