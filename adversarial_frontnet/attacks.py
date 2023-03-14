@@ -25,6 +25,20 @@ def norm_transformation(sf, tx, ty):
 
     return scaling_norm, tx_tanh, ty_tanh
 
+def gen_noisy_transformations(batch_size, sf, tx, ty):
+    noisy_transformation_matrix = []
+    for i in range(batch_size):
+        sf_n = sf + np.random.normal(0.0, 0.1)
+        tx_n = tx + np.random.normal(0.0, 0.1)
+        ty_n = ty + np.random.normal(0.0, 0.1)
+
+        scale_norm, tx_norm, ty_norm = norm_transformation(sf_n, tx_n, ty_n)
+        single_matrix = get_transformation(scale_norm, tx_norm, ty_norm)
+        noisy_transformation_matrix.append(single_matrix)
+    
+    return torch.cat(noisy_transformation_matrix)
+
+
 
 def targeted_attack_patch(dataset, patch, model, scale_factor, tx, ty, target, lr=3e-2, epochs=10, path="eval/"):
 
@@ -46,14 +60,17 @@ def targeted_attack_patch(dataset, patch, model, scale_factor, tx, ty, target, l
 
                 #optimized_patches.append(patch_t.clone().detach())
 
-                scale_factor_n = scale_factor + np.random.normal(0.0, 0.1)
-                tx_n = tx + np.random.normal(0.0, 0.1)
-                ty_n = ty + np.random.normal(0.0, 0.1)
-                scale_norm, tx_norm, ty_norm = norm_transformation(scale_factor_n, tx_n, ty_n)
+                # scale_factor_n = scale_factor + np.random.normal(0.0, 0.1)
+                # tx_n = tx + np.random.normal(0.0, 0.1)
+                # ty_n = ty + np.random.normal(0.0, 0.1)
+                #scale_norm, tx_norm, ty_norm = norm_transformation(scale_factor_n, tx_n, ty_n)
 
-                transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
+                #transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
+                noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
+                patch_batch = torch.cat([patch_t for _ in range(len(batch))])
 
-                mod_img = place_patch(batch.clone(), patch_t, transformation_matrix)
+                mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
+
                 # add noise to patch+background
                 mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
                 # restrict patch+background to stay in range (0., 255.)
@@ -104,7 +121,7 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
     # get a batch consisting of all images in the dataset
     # batch, _ = dataset.dataset[:1000]
     # batch = batch.to(patch.device)
-    
+
 
     #all_optimized = []
     all_losses = []
@@ -114,7 +131,7 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
     try: 
         best_loss = np.inf
 
-        for restart in trange(num_restarts):
+        for restart in range(num_restarts):
             if include_start and restart == 0:
                 # start with previously optimized values, fine-tuning
                 tx = tx_start.clone().to(patch.device).requires_grad_(True)
@@ -143,10 +160,15 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
                     batch, _ = data
                     batch = batch.to(patch.device)
             
-                    scaling_norm, tx_tanh, ty_tanh = norm_transformation(scaling_factor, tx, ty)
-                    transformation_matrix = get_transformation(sf=scaling_norm, tx=tx_tanh, ty=ty_tanh)
+                    #scaling_norm, tx_tanh, ty_tanh = norm_transformation(scaling_factor, tx, ty)
+                    #transformation_matrix = get_transformation(sf=scaling_norm, tx=tx_tanh, ty=ty_tanh)
                     # print(scaling_norm, tx_tanh, ty_tanh)
-                    mod_img = place_patch(batch, patch, transformation_matrix)
+                    #mod_img = place_patch(batch, patch, transformation_matrix)
+                    noisy_transformations = gen_noisy_transformations(len(batch), scaling_factor, tx, ty)
+                    #print(noisy_transformations.shape)
+                    patch_batch = torch.cat([patch for _ in range(len(batch))])
+                    #print(patch_batch.shape)
+                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
                     # add noise to patch+background
                     mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)    
                     mod_img.clamp_(0., 255.)
@@ -198,7 +220,7 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
 
     return best_scaling, best_tx, best_ty, best_loss#all_losses[best_run], all_optimized[best_run]
 
-def calc_eval_loss(dataset, patch, transformation_matrix, model):
+def calc_eval_loss(dataset, patch, transformation_matrix, model, target):
     actual_loss = torch.tensor(0.).to(patch.device)
 
     for _, data in enumerate(dataset):
@@ -223,10 +245,10 @@ if __name__=="__main__":
     import os
 
     # TODO: WH: push changes
-    # * Change plotting to match typical supvervised learning: high-level iteration on x, train/test loss on y [always from end of the loop, after patch + position were optimized]
-    # * Change plotting for tx/ty/scaling with high-level iteration x
-    # * Patch opt: Add transformation noise per picture, not batch [Pia]
-    # * Pos opt: Add transformation noise, similar to patch opt 
+    # * Change plotting to match typical supvervised learning: high-level iteration on x, train/test loss on y [always from end of the loop, after patch + position were optimized] --> done
+    # * Change plotting for tx/ty/scaling with high-level iteration x --> done
+    # * Patch opt: Add transformation noise per picture, not batch [Pia] --> done
+    # * Pos opt: Add transformation noise, similar to patch opt  --> done
 
     from util import load_dataset, load_model
     model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
@@ -312,10 +334,9 @@ if __name__=="__main__":
         scale_norm, tx_norm, ty_norm = norm_transformation(scale_factor, tx, ty)
         transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
-        # TODO: compute loss for testing here, using latest patch and scale factor
-        train_loss = calc_eval_loss(train_set, patch, transformation_matrix, model)
+        train_loss = calc_eval_loss(train_set, patch, transformation_matrix, model, target)
         train_losses.append(train_loss)
-        test_loss = calc_eval_loss(test_set, patch, transformation_matrix, model)
+        test_loss = calc_eval_loss(test_set, patch, transformation_matrix, model, target)
         test_losses.append(test_loss)
 
     #print(optimization_patch_losses)
@@ -363,21 +384,21 @@ if __name__=="__main__":
     test_batch, test_gt = test_set.dataset[:]
     test_batch = test_batch.to(device)
 
-    pred_base = torch.stack(model(test_batch.float())).permute(1, 0, 2).squeeze(2).squeeze(0)
+    _, pred_base, _, _ = model(test_batch.float())
 
     mod_img = place_patch(test_batch, patch_start, transformation_matrix)
     mod_img.clamp_(0., 255.)
-    pred_start_patch = torch.stack(model(mod_img.float())).permute(1, 0, 2).squeeze(2).squeeze(0)
+    _, pred_start_patch, _, _ = model(mod_img.float())
 
     mod_img = place_patch(test_batch, patch, transformation_matrix)
     mod_img.clamp_(0., 255.)
 
-    pred_opt_patch = torch.stack(model(mod_img.float())).permute(1, 0, 2).squeeze(2).squeeze(0)
+    _, pred_opt_patch, _, _ = model(mod_img.float())
     #pred_y = prediction[..., 1].detach().cpu().numpy()
 
     #rel_y = pred_y + target.cpu().numpy()
 
-    boxplot_data = [pred_base[..., 1].detach().cpu().numpy(), pred_start_patch[..., 1].detach().cpu().numpy(), pred_opt_patch[..., 1].detach().cpu().numpy()]
+    boxplot_data = [pred_base.squeeze(1).detach().cpu().numpy(), pred_start_patch.squeeze(1).detach().cpu().numpy(), pred_opt_patch.squeeze(1).detach().cpu().numpy()]
 
     # vline_idx_patch = [i*len(loss_patch) for i in range(1, 10)]
 
