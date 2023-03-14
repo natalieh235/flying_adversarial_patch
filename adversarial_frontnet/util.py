@@ -12,6 +12,9 @@ import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 
+import numpy as np
+import random
+
 def load_model(path, device, config):
     """
     Loads a saved Frontnet model from the given path with the set configuration and moves it to CPU/GPU.
@@ -41,7 +44,7 @@ def load_model(path, device, config):
 
     return model
 
-def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_workers = 1, train=True):
+def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_workers = 1, train=True, train_set_size=0.9):
     """
     Loads a dataset from the given path. 
     Parameters
@@ -61,16 +64,22 @@ def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_w
     # load images and labels from the stored dataset
     [images, labels] = DataProcessor.ProcessTestData(path)
 
+    rng = np.random.default_rng(1749)
+
+    indices = np.arange(len(images))
+    rng.shuffle(indices)
+    split_idx = int(len(images) * train_set_size)
+
     if train:
         # create a torch dataset from the loaded data
-        dataset = Dataset(images[:3624], labels[:3624])
+        dataset = Dataset(images[indices[:split_idx]], labels[indices[:split_idx]])
     else:
-        dataset = Dataset(images[3624:], labels[3624:])
+        dataset = Dataset(images[indices[split_idx:]], labels[split_idx:])
 
     # for quick and convinient access, create a torch DataLoader with the given parameters
     data_params = {'batch_size': batch_size, 'shuffle': shuffle, 'drop_last':drop_last, 'num_workers': num_workers}
     data_loader = data.DataLoader(dataset, **data_params)
-
+    
     return data_loader
 
 
