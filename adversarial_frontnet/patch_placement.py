@@ -333,9 +333,11 @@ def place_patch(image, patch, transformation_matrix):
     # print(transformation_matrix.shape)
 
     # PyTorch's affine grid funtion needs the inverse of the 3x3 transformation matrix
-    transformation_matrix = torch.cat((transformation_matrix, torch.tensor([[[0, 0, 1]]], device=transformation_matrix.device)), dim=1)
+    #transformation_matrix = torch.cat((transformation_matrix, torch.tensor([[[0, 0, 1]]], device=transformation_matrix.device)), dim=1)
+    last_row = torch.tensor([[0, 0, 1]], device=transformation_matrix.device)
+    transformation_matrix = torch.stack([torch.cat([transformation_matrix[i], last_row]) for i in range(len(transformation_matrix))])
     inv_t_matrix = torch.inverse(transformation_matrix)[:, :2] # affine grid expects only the first 2 rows, the last row (0, 0, 1) is neglected
-    affine_grid = torch.nn.functional.affine_grid(inv_t_matrix, size=(1, 1, 96, 160), align_corners=False)
+    affine_grid = torch.nn.functional.affine_grid(inv_t_matrix, size=(len(transformation_matrix), 1, 96, 160), align_corners=False)
 
     # calculate both the bit mask and the transformed patch
     bit_mask = grid_sample(mask, affine_grid, align_corners=False, padding_mode='zeros').bool()
