@@ -279,14 +279,14 @@ if __name__=="__main__":
     #  b) call targeted_attack_position once for each target
 
     # SETTINGS
-    path = 'eval/debug/multi_target_joint/'
+    path = 'eval/debug/settings0/'
     lr_pos = 1e-2
     lr_patch = 1e-1
-    num_hl_iter = 2
+    num_hl_iter = 5
     num_pos_restarts = 2
     num_pos_epochs = 1
-    num_patch_epochs = 1
-    mode = "joint" # regular or joint
+    num_patch_epochs = 5
+    mode = "regular" # regular or joint
 
     from util import load_dataset, load_model
     model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
@@ -367,12 +367,13 @@ if __name__=="__main__":
             # optimize positions for multiple target values
             for target_idx, target in enumerate(targets):
                 print(f"Optimizing position for target {targets[target_idx].cpu().item()}...")
-                scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch, model, target, include_start=True, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_pos, num_restarts=num_pos_restarts, epochs=1, path=path)
+                scale_start, tx_start, ty_start = optimization_pos_vectors[-1][target_idx]
+                scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch, model, target, include_start=True, tx_start=tx_start, ty_start=ty_start, sf_start=scale_start, lr=lr_pos, num_restarts=num_pos_restarts, epochs=1, path=path)
                 positions.append(torch.stack([scale_factor, tx, ty]))
                 pos_losses.append(loss_pos)
 
         # TODO: improve!
-        # For the joint case, the torch.stack(positions) is of shape (3, 2, 1),
+        # For the joint case, torch.stack(positions) is of shape (3, 2, 1),
         # otherwise the shape is (2, 3, 1). The permute forces the correct shape.
         if mode != "joint":
             optimization_pos_vectors.append(torch.stack(positions))
@@ -409,7 +410,7 @@ if __name__=="__main__":
     # print("patch losses shape: ", optimization_patch_losses.shape)
 
     # print("vectors shape: ", optimization_pos_vectors.shape)
-    # print("pos losses shape: ", optimization_pos_losses.shape)
+    print("pos losses shape: ", optimization_pos_losses.shape)
 
     # print("eval train losses shape: ", train_losses.shape)
     # print("eval test losses shape: ", test_losses.shape)
@@ -548,7 +549,7 @@ if __name__=="__main__":
             ax = fig.add_subplot(111)
             ax.set_title(f'Loss position optimization for all iterations, lr={lr_pos}')
             for target_idx, target in enumerate(targets):
-                ax.plot(optimization_pos_losses.cpu()[target_idx], label=f'target {target.cpu().item()}')
+                ax.plot(optimization_pos_losses.cpu()[..., target_idx], label=f'target {target.cpu().item()}')
             ax.set_xlabel('iteration')
             ax.set_ylabel('mean l2 distance')
             ax.legend()
