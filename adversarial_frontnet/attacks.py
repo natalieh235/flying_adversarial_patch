@@ -98,7 +98,7 @@ def targeted_attack_joint(dataset, patch, model, target, lr=3e-2, epochs=10, pat
 
     return best_patch, best_loss, best_scaling, best_tx, best_ty
 
-def targeted_attack_patch(dataset, patch, model, scale_factor, tx, ty, target, lr=3e-2, epochs=10, path="eval/"):
+def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, epochs=10, path="eval/"):
 
     patch_t = patch.clone().requires_grad_(True)
     opt = torch.optim.Adam([patch_t], lr=lr)
@@ -124,23 +124,29 @@ def targeted_attack_patch(dataset, patch, model, scale_factor, tx, ty, target, l
                 #scale_norm, tx_norm, ty_norm = norm_transformation(scale_factor_n, tx_n, ty_n)
 
                 #transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
-                noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
-                patch_batch = torch.cat([patch_t for _ in range(len(batch))])
+                target_losses = []
+                for target_idx, target in enumerate(targets):
+                    scale_factor, tx, ty = positions[target_idx]
+                    noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
+                    patch_batch = torch.cat([patch_t for _ in range(len(batch))])
 
-                mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
+                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
 
-                # add noise to patch+background
-                mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
-                # restrict patch+background to stay in range (0., 255.)
-                mod_img.clamp_(0., 255.)
+                    # add noise to patch+background
+                    mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
+                    # restrict patch+background to stay in range (0., 255.)
+                    mod_img.clamp_(0., 255.)
 
-                # predict x, y, z, yaw
-                x, y, z, phi = model(mod_img)
+                    # predict x, y, z, yaw
+                    x, y, z, phi = model(mod_img)
 
-                # calculate mean l2 losses (target, y) for all images in batch
-                #all_l2 = torch.stack([torch.dist(target, i, p=2) for i in prediction[..., 1]])
-                all_l2 = torch.sqrt(((y-target)**2)) 
-                loss = torch.mean(all_l2)
+                    # calculate mean l2 losses (target, y) for all images in batch
+                    #all_l2 = torch.stack([torch.dist(target, i, p=2) for i in prediction[..., 1]])
+                    all_l2 = torch.sqrt(((y-target)**2)) 
+                    target_losses.append(torch.mean(all_l2))
+                
+                
+                loss = torch.sum(torch.stack(target_losses))   
                 actual_loss += loss.clone().detach()
 
                 losses.append(loss.clone().detach())
@@ -161,18 +167,7 @@ def targeted_attack_patch(dataset, patch, model, scale_factor, tx, ty, target, l
     except KeyboardInterrupt:
         print("Aborting optimization...")    
 
-    losses = torch.stack(losses)
-    # optimized_patches = torch.stack(optimized_patches)
-
-    # best_idx = torch.argmin(losses)
-    # best_patch = optimized_patches[best_idx]
-
-    # print(f"Found best patch at training step {best_idx}, loss: {losses[best_idx]}")
-
-    # np.save(path+'best_patch.npy', best_patch)
-
-    # np.save(path+'losses.npy', losses)
-
+    #losses = torch.stack(losses)
     return best_patch, best_loss#, losses
 
 def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_start=False, tx_start=0., ty_start=0., sf_start=0.1, num_restarts=50, epochs=5, path="eval/targeted/"): 
@@ -275,13 +270,13 @@ if __name__=="__main__":
     #  b) call targeted_attack_position once for each target
 
     # SETTINGS
-    path = 'eval/debug/multi_target/'
+    path = 'eval/debug/settings0/'
     lr_pos = 1e-2
     lr_patch = 1e-1
-    num_hl_iter = 2
+    num_hl_iter = 5
     num_pos_restarts = 2
     num_pos_epochs = 1
-    num_patch_epochs = 1
+    num_patch_epochs = 5
     mode = "regular" # regular or joint
 
     from util import load_dataset, load_model
@@ -303,6 +298,7 @@ if __name__=="__main__":
     os.makedirs(path, exist_ok = True)
 
     # load the patch from misc folder
+    # TODO: add the other custom face patches
     patch_start = np.load("misc/custom_patch_resized.npy")
     patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device)
 
@@ -331,6 +327,14 @@ if __name__=="__main__":
 
     # start with placing the patch in the middle
     scale_factor, tx, ty = torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device)
+    #print(scale_factor.shape)
+    positions = []
+    for target_idx in range(len(targets)):
+        positions.append(torch.stack([scale_factor, tx, ty]))
+
+    #print(torch.stack(positions), torch.stack(positions).shape)
+    optimization_pos_vectors.append(torch.stack(positions))
+    
 
     patch = patch_start.clone()
     
@@ -338,7 +342,7 @@ if __name__=="__main__":
         
         if mode != "joint":
             print("Optimizing patch...")
-            patch, loss_patch = targeted_attack_patch(train_set, patch, model, scale_factor, tx, ty, target=targets[0], lr=lr_patch, epochs=num_patch_epochs, path=path)
+            patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
         else:
             patch, loss_patch, scale_factor, tx, ty = targeted_attack_joint(train_set, patch, model, target=target, lr=lr_patch, epochs=num_patch_epochs, path=path)
             loss_pos = loss_patch
@@ -350,15 +354,13 @@ if __name__=="__main__":
             positions = []
             pos_losses = []
             # optimize positions for multiple target values
-            for target_iter, target in enumerate(targets):
-                print(f"Optimizing position for target {target_iter}...")
+            for target_idx, target in enumerate(targets):
+                print(f"Optimizing position for target {targets[target_idx].cpu().item()}...")
                 scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch, model, target, include_start=True, tx_start=tx, ty_start=ty, sf_start=scale_factor, lr=lr_pos, num_restarts=num_pos_restarts, epochs=1, path=path)
-                positions.append(torch.cat([scale_factor, tx, ty]))
+                positions.append(torch.stack([scale_factor, tx, ty]))
                 pos_losses.append(loss_pos)
 
 
-        #optimization_pos_vectors.append(torch.stack([scale_factor, tx, ty]))
-        #optimization_pos_losses.append(loss_pos)
         optimization_pos_vectors.append(torch.stack(positions))
         optimization_pos_losses.append(torch.stack(pos_losses))
 
@@ -366,7 +368,7 @@ if __name__=="__main__":
         test_loss = []
         for target_idx, target in enumerate(targets):
             scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx])
-            transformation_matrix = get_transformation(scale_norm.unsqueeze(0), tx_norm.unsqueeze(0), ty_norm.unsqueeze(0)).to(device)
+            transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
             train_loss.append(calc_eval_loss(train_set, patch, transformation_matrix, model, target))
             test_loss.append(calc_eval_loss(test_set, patch, transformation_matrix, model, target))
@@ -386,20 +388,21 @@ if __name__=="__main__":
     train_losses = torch.stack(train_losses)
     test_losses = torch.stack(test_losses)
 
-    print("patches shape: ", optimization_patches.shape)
-    print("patch losses shape: ", optimization_patch_losses.shape)
+    # print("patches shape: ", optimization_patches.shape)
+    # print("patch losses shape: ", optimization_patch_losses.shape)
 
-    print("vectors shape: ", optimization_pos_vectors.shape)
-    print("pos losses shape: ", optimization_pos_losses.shape)
+    # print("vectors shape: ", optimization_pos_vectors.shape)
+    # print("pos losses shape: ", optimization_pos_losses.shape)
 
-    print("eval train losses shape: ", train_losses.shape)
-    print("eval test losses shape: ", test_losses.shape)
+    # print("eval train losses shape: ", train_losses.shape)
+    # print("eval test losses shape: ", test_losses.shape)
 
     print("Saving results...")
     # prepare data for plots
     # normalize scale factor, tx and ty for plots
-    norm_optimized_vecs = [norm_transformation(optimization_pos_vectors[i,..., 0], optimization_pos_vectors[i,..., 1], optimization_pos_vectors[i,..., 2]) for i in range(optimization_pos_vectors.shape[0])]
-    
+
+    norm_optimized_vecs = [norm_transformation(optimization_pos_vectors[i].mT[..., 0], optimization_pos_vectors[i].mT[..., 1], optimization_pos_vectors[i].mT[..., 2]) for i in range(len(optimization_pos_vectors))]
+
     all_sf = torch.stack([norm_optimized_vecs[i][0] for i in range(len(norm_optimized_vecs))])
     all_tx = torch.stack([norm_optimized_vecs[i][1] for i in range(len(norm_optimized_vecs))])
     all_ty = torch.stack([norm_optimized_vecs[i][2] for i in range(len(norm_optimized_vecs))])
@@ -423,7 +426,7 @@ if __name__=="__main__":
     boxplot_data = []
     for target_idx, target in enumerate(targets):
         scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx])
-        transformation_matrix = get_transformation(scale_norm.unsqueeze(0), tx_norm.unsqueeze(0), ty_norm.unsqueeze(0)).to(device)
+        transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
         _, pred_base, _, _ = model(test_batch.float())
 
         mod_img = place_patch(test_batch, patch_start, transformation_matrix)
@@ -458,7 +461,7 @@ if __name__=="__main__":
     final_images = []
     for target_idx in range(len(targets)):
         scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx])
-        transformation_matrix = get_transformation(scale_norm.unsqueeze(0), tx_norm.unsqueeze(0), ty_norm.unsqueeze(0)).to(device)
+        transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
         
         final_images.append(place_patch(base_img, patch, transformation_matrix))
     #prediction_mod = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
@@ -559,7 +562,7 @@ if __name__=="__main__":
         ax = fig.add_subplot(111)
         ax.set_title(f'scale factor for all iterations')
         for target_idx in range(len(targets)):
-            ax.plot(all_sf.cpu()[..., target_idx, ...], label=f'target {targets[target_idx].cpu().item()}')
+            ax.plot(all_sf.cpu()[target_idx, ...], label=f'target {targets[target_idx].cpu().item()}')
         ax.set_xlabel('training steps')
         ax.set_ylabel('scale factor')
         ax.legend()
@@ -580,7 +583,7 @@ if __name__=="__main__":
         ax = fig.add_subplot(111)
         ax.set_title(f'tx for all iterations')
         for target_idx in range(len(targets)):
-            ax.plot(all_tx.cpu()[..., target_idx, ...], label=f'target {targets[target_idx].cpu().item()}')
+            ax.plot(all_tx.cpu()[target_idx, ...], label=f'target {targets[target_idx].cpu().item()}')
         ax.set_xlabel('training steps')
         ax.set_ylabel('tx')
         ax.legend()
@@ -601,7 +604,7 @@ if __name__=="__main__":
         ax = fig.add_subplot(111)
         ax.set_title(f'ty for all iterations')
         for target_idx in range(len(targets)):
-            ax.plot(all_ty.cpu()[..., target_idx, ...], label=f'target {targets[target_idx].cpu().item()}')
+            ax.plot(all_ty.cpu()[target_idx, ...], label=f'target {targets[target_idx].cpu().item()}')
         ax.set_xlabel('training steps')
         ax.set_ylabel('ty')
         ax.legend()
