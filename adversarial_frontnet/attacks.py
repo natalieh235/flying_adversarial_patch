@@ -268,7 +268,11 @@ def calc_eval_loss(dataset, patch, transformation_matrix, model, target):
 if __name__=="__main__":
     import os
 
-    # TODO: multi-
+    # TODO: multiple attacks per patch
+    #  targets = [-2, 2]  # i.e., this patch should be possible to use to attack for y=-2 *and* y=2; we find *one* patch and *two* tx/ty/scaling results
+    #  approach
+    #  a) change targeted_attack_patch to get tx/ty/scaling per target; the loss is the sum of the individual losses
+    #  b) call targeted_attack_position once for each target
 
     # SETTINGS
     path = 'eval/debug/settings0/'
@@ -324,25 +328,10 @@ if __name__=="__main__":
 
     optimization_patches.append(patch_start)
 
-    # calculate initial optimal patch position on 50 random restarts
-    # TODO: parallelize restarts for multiple CPU cores
-    print("Optimizing initial patch position...")
-    scale_factor, tx, ty, loss_pos = targeted_attack_position(train_set, patch_start, model, target, lr=lr_pos, num_restarts=num_pos_restarts, epochs=num_pos_epochs, path=path)
-    # print(optimized_vectors.shape, loss_pos.shape)
-    optimization_pos_vectors.append(torch.stack([scale_factor, tx, ty]))
-    optimization_pos_losses.append(loss_pos)
-
-    scale_norm, tx_norm, ty_norm = norm_transformation(scale_factor, tx, ty)
-
-    print(f"Optimized position: sf={scale_norm.item():.2f}, tx={tx_norm.item():.2f}, ty={ty_norm.item():.2f}")
-
-    # calculate transformation matrix from single values
-    # transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
+    # start with placing the patch in the middle
+    scale_factor, tx, ty = torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device)
 
     patch = patch_start.clone()
-
-    # decrease position learning rate for fine tuning
-    #lr_pos = 1e-3
     
     for train_iteration in trange(num_hl_iter):
         
