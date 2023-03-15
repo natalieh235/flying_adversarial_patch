@@ -38,12 +38,17 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
     
     return torch.cat(noisy_transformation_matrix)
 
-def targeted_attack_joint(dataset, patch, model, target, lr=3e-2, epochs=10, path="eval/"):
+def targeted_attack_joint(dataset, patch, model, targets, lr=3e-2, epochs=10, path="eval/"):
 
     patch_t = patch.clone().requires_grad_(True)
-    tx = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
-    ty = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
-    scaling_factor = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
+    num_target = len(targets)
+    tx = torch.FloatTensor(num_target, 1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
+    ty = torch.FloatTensor(num_target,1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
+    scaling_factor = torch.FloatTensor(num_target,1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
+    
+    # tx = torch.tensor([[0.], [0.]]).to(patch.device).requires_grad_(True)
+    # ty = torch.tensor([[0.], [0.]]).to(patch.device).requires_grad_(True)
+    # scaling_factor = torch.tensor([[0.], [0.]]).to(patch.device).requires_grad_(True)
     opt = torch.optim.Adam([patch_t, tx, ty, scaling_factor], lr=lr)
 
     #optimized_patches = []
@@ -59,22 +64,26 @@ def targeted_attack_joint(dataset, patch, model, target, lr=3e-2, epochs=10, pat
                 batch, _ = data
                 batch = batch.to(patch.device)
 
-                noisy_transformations = gen_noisy_transformations(len(batch), scaling_factor, tx, ty)
-                patch_batch = torch.cat([patch_t for _ in range(len(batch))])
+                target_losses = []
+                for target_idx, target in enumerate(targets):
+                    noisy_transformations = gen_noisy_transformations(len(batch), scaling_factor[target_idx], tx[target_idx], ty[target_idx])
+                    patch_batch = torch.cat([patch_t for _ in range(len(batch))])
 
-                mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
+                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
 
-                # add noise to patch+background
-                mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
-                # restrict patch+background to stay in range (0., 255.)
-                mod_img.clamp_(0., 255.)
+                    # add noise to patch+background
+                    mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
+                    # restrict patch+background to stay in range (0., 255.)
+                    mod_img.clamp_(0., 255.)
 
-                # predict x, y, z, yaw
-                x, y, z, phi = model(mod_img)
+                    # predict x, y, z, yaw
+                    x, y, z, phi = model(mod_img)
 
-                # calculate mean l2 losses (target, y) for all images in batch
-                all_l2 = torch.sqrt(((y-target)**2)) 
-                loss = torch.mean(all_l2)
+                    # calculate mean l2 losses (target, y) for all images in batch
+                    all_l2 = torch.sqrt(((y-target)**2)) 
+                    target_losses.append(torch.mean(all_l2))
+
+                loss = torch.sum(torch.stack(target_losses))
                 actual_loss += loss.clone().detach()
 
                 losses.append(loss.clone().detach())
@@ -125,8 +134,8 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
 
                 #transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
                 target_losses = []
-                for target_idx, target in enumerate(targets):
-                    scale_factor, tx, ty = positions[target_idx]
+                for position, target in zip(positions, targets):
+                    scale_factor, tx, ty = position
                     noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
                     patch_batch = torch.cat([patch_t for _ in range(len(batch))])
 
@@ -270,14 +279,14 @@ if __name__=="__main__":
     #  b) call targeted_attack_position once for each target
 
     # SETTINGS
-    path = 'eval/debug/settings0/'
+    path = 'eval/debug/multi_target_joint/'
     lr_pos = 1e-2
     lr_patch = 1e-1
-    num_hl_iter = 5
+    num_hl_iter = 2
     num_pos_restarts = 2
     num_pos_epochs = 1
-    num_patch_epochs = 5
-    mode = "regular" # regular or joint
+    num_patch_epochs = 1
+    mode = "joint" # regular or joint
 
     from util import load_dataset, load_model
     model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
@@ -312,7 +321,7 @@ if __name__=="__main__":
 
     # define target 
     # TODO: currently only the y-value can be targeted
-    targets = torch.tensor([-2.0, 2.0]).to(device)
+    targets = torch.tensor([-2.0, 0.0, 2.0]).to(device)
 
     optimization_pos_losses = []
     optimization_pos_vectors = []
@@ -340,19 +349,21 @@ if __name__=="__main__":
     
     for train_iteration in trange(num_hl_iter):
         
+        positions = []
+        pos_losses = []
+
         if mode != "joint":
             print("Optimizing patch...")
             patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
         else:
-            patch, loss_patch, scale_factor, tx, ty = targeted_attack_joint(train_set, patch, model, target=target, lr=lr_patch, epochs=num_patch_epochs, path=path)
-            loss_pos = loss_patch
+            patch, loss_patch, scale_factor, tx, ty = targeted_attack_joint(train_set, patch, model, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            positions = [scale_factor, tx, ty]
+            pos_losses.append(loss_patch)
 
         optimization_patches.append(patch.clone())
         optimization_patch_losses.append(loss_patch)
 
         if mode != "joint":
-            positions = []
-            pos_losses = []
             # optimize positions for multiple target values
             for target_idx, target in enumerate(targets):
                 print(f"Optimizing position for target {targets[target_idx].cpu().item()}...")
@@ -360,8 +371,14 @@ if __name__=="__main__":
                 positions.append(torch.stack([scale_factor, tx, ty]))
                 pos_losses.append(loss_pos)
 
-
-        optimization_pos_vectors.append(torch.stack(positions))
+        # TODO: improve!
+        # For the joint case, the torch.stack(positions) is of shape (3, 2, 1),
+        # otherwise the shape is (2, 3, 1). The permute forces the correct shape.
+        if mode != "joint":
+            optimization_pos_vectors.append(torch.stack(positions))
+        else:
+            optimization_pos_vectors.append(torch.stack(positions).permute(1, 0, 2))
+        
         optimization_pos_losses.append(torch.stack(pos_losses))
 
         train_loss = []
@@ -486,7 +503,10 @@ if __name__=="__main__":
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_title(f'Loss patch optimization for all iterations, lr={lr_patch}')
+        if mode != "joint":
+            ax.set_title(f'Loss patch optimization for all iterations, lr={lr_patch}')
+        else:
+            ax.set_title('Loss joint optimization for all iterations')
         ax.plot(optimization_patch_losses.view(-1).cpu())
         #ax.vlines(vline_idx_patch, 0, 1, transform=ax.get_xaxis_transform(), colors='r')
         ax.set_xlabel('iteration')
@@ -523,23 +543,24 @@ if __name__=="__main__":
         #     pdf.savefig(fig)
         #     plt.close(fig)
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title(f'Loss position optimization for all iterations, lr={lr_pos}')
-        for target_idx in range(len(targets)):
-            ax.plot(optimization_pos_losses.cpu()[..., target_idx, ...], label=f'target {targets[target_idx].cpu().item()}')
-        ax.set_xlabel('iteration')
-        ax.set_ylabel('mean l2 distance')
-        ax.legend()
-        pdf.savefig(fig)
-        plt.close(fig)
+        if mode != "joint":
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'Loss position optimization for all iterations, lr={lr_pos}')
+            for target_idx, target in enumerate(targets):
+                ax.plot(optimization_pos_losses.cpu()[target_idx], label=f'target {target.cpu().item()}')
+            ax.set_xlabel('iteration')
+            ax.set_ylabel('mean l2 distance')
+            ax.legend()
+            pdf.savefig(fig)
+            plt.close(fig)
 
-        for target_idx in range(len(targets)):
+        for target_idx, target in enumerate(targets):
             fig = plt.figure()
             ax = fig.add_subplot(111)
             ax.set_title(f'Losses after each patch & position optimization')
-            ax.plot(train_losses.cpu()[..., target_idx], label=f'train set, target {targets[target_idx].cpu().item()}')
-            ax.plot(test_losses.cpu()[..., target_idx], label=f'test set, target {targets[target_idx].cpu().item()}')
+            ax.plot(train_losses.cpu()[..., target_idx], label=f'train set, target {target.cpu().item()}')
+            ax.plot(test_losses.cpu()[..., target_idx], label=f'test set, target {target.cpu().item()}')
             ax.legend()
             ax.set_xlabel('iteration')
             ax.set_ylabel('mean l2 distance')
@@ -561,8 +582,8 @@ if __name__=="__main__":
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.set_title(f'scale factor for all iterations')
-        for target_idx in range(len(targets)):
-            ax.plot(all_sf.cpu()[target_idx, ...], label=f'target {targets[target_idx].cpu().item()}')
+        for target_idx, target in enumerate(targets):
+            ax.plot(all_sf.cpu()[:, target_idx], label=f'target {target.cpu().item()}')
         ax.set_xlabel('training steps')
         ax.set_ylabel('scale factor')
         ax.legend()
@@ -582,8 +603,8 @@ if __name__=="__main__":
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.set_title(f'tx for all iterations')
-        for target_idx in range(len(targets)):
-            ax.plot(all_tx.cpu()[target_idx, ...], label=f'target {targets[target_idx].cpu().item()}')
+        for target_idx, target in enumerate(targets):
+            ax.plot(all_tx.cpu()[:, target_idx], label=f'target {target.cpu().item()}')
         ax.set_xlabel('training steps')
         ax.set_ylabel('tx')
         ax.legend()
@@ -603,8 +624,8 @@ if __name__=="__main__":
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.set_title(f'ty for all iterations')
-        for target_idx in range(len(targets)):
-            ax.plot(all_ty.cpu()[target_idx, ...], label=f'target {targets[target_idx].cpu().item()}')
+        for target_idx, target in enumerate(targets):
+            ax.plot(all_ty.cpu()[:, target_idx], label=f'target {target.cpu().item()}')
         ax.set_xlabel('training steps')
         ax.set_ylabel('ty')
         ax.legend()
@@ -621,10 +642,10 @@ if __name__=="__main__":
         #     pdf.savefig(fig)
         #     plt.close(fig)
 
-        for target_idx in range(len(targets)):
+        for target_idx, target in enumerate(targets):
             fig = plt.figure()
             ax = fig.add_subplot(111)
-            ax.set_title(f'Placed patch after optimization, target {targets[target_idx].cpu().item()}')
+            ax.set_title(f'Placed patch after optimization, target {target.cpu().item()}')
             ax.imshow(final_images[target_idx][0][0].detach().cpu().numpy(), cmap='gray')
             plt.axis('off')
             pdf.savefig(fig)
