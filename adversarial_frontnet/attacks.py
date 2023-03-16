@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torch.nn.functional import mse_loss
 from tqdm import tqdm, trange
 
 from torchvision import transforms
@@ -179,9 +180,10 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
     #losses = torch.stack(losses)
     return best_patch, best_loss#, losses
 
-def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_start=False, tx_start=0., ty_start=0., sf_start=0.1, num_restarts=50, epochs=5, path="eval/targeted/"): 
+def targeted_attack_position(dataset, patch, model, target, target_mask=[True, True, True], lr=3e-2, include_start=False, tx_start=0., ty_start=0., sf_start=0.1, num_restarts=50, epochs=5, path="eval/targeted/"): 
     try: 
         best_loss = np.inf
+        target_mask = torch.tensor(target_mask).to(patch.device)
 
         for restart in range(num_restarts):
             if include_start and restart == 0:
@@ -219,7 +221,11 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
                     batch = batch.to(patch.device)
             
                     noisy_transformations = gen_noisy_transformations(len(batch), scaling_factor, tx, ty)
-                    patch_batch = torch.cat([patch for _ in range(len(batch))])
+                    patch_batch = patch.repeat(len(batch), 1, 1, 1)
+
+                    # mask_batch = target_mask.repeat(len(batch), 1).to(patch.device)
+                    target_batch = target.repeat(len(batch), 1)
+ 
                     mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
                     # add noise to patch+background
                     mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)    
@@ -227,9 +233,19 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
 
                     x, y, z, phi = model(mod_img)
 
+                    # TODO: improve readbility!
+                    position = torch.stack([x, y, z])
+                    position = position.squeeze(2).mT
+
                     # calculate mean l2 losses (target, y) for all images in batch
-                    all_l2 = torch.sqrt(((y-target)**2))
-                    loss = torch.mean(all_l2)
+                    # only target x,y and z which are previously chosen, otherwise keep x/y/z to prediction
+
+                    # target_batch = torch.where(mask_batch == True, target_batch, position)
+                    
+                    target_batch = target_batch + (position * ~target_mask)
+                    
+                    loss = mse_loss(target_batch, position)
+
                     actual_loss += loss.clone().detach()
 
                     opt.zero_grad()
@@ -274,18 +290,18 @@ if __name__=="__main__":
 
     # TODO: multiple attacks per patch
     #  targets = [-2, 2]  # i.e., this patch should be possible to use to attack for y=-2 *and* y=2; we find *one* patch and *two* tx/ty/scaling results
-    #  approach
-    #  a) change targeted_attack_patch to get tx/ty/scaling per target; the loss is the sum of the individual losses
-    #  b) call targeted_attack_position once for each target
+    #  approach 
+    #  a) change targeted_attack_patch to get tx/ty/scaling per target; the loss is the sum of the individual losses --> done
+    #  b) call targeted_attack_position once for each target --> done
 
     # SETTINGS
-    path = 'eval/debug/settings0/'
+    path = 'eval/debug/settings1_random/'
     lr_pos = 1e-2
     lr_patch = 1e-1
-    num_hl_iter = 5
-    num_pos_restarts = 2
+    num_hl_iter = 50
+    num_pos_restarts = 5
     num_pos_epochs = 1
-    num_patch_epochs = 5
+    num_patch_epochs = 2
     mode = "regular" # regular or joint
 
     from util import load_dataset, load_model
@@ -309,7 +325,7 @@ if __name__=="__main__":
     # load the patch from misc folder
     # TODO: add the other custom face patches
     patch_start = np.load("misc/custom_patch_resized.npy")
-    patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device)
+    patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device) / 255.
 
     # or start with a random patch
     # patch_start = torch.rand(1, 1, 200, 200).to(device) * 255.
@@ -319,9 +335,12 @@ if __name__=="__main__":
 
 
 
-    # define target 
-    # TODO: currently only the y-value can be targeted
-    targets = torch.tensor([-2.0, 0.0, 2.0]).to(device)
+    # define targets
+    # choose which combination of x, y, z should be attack
+    # specify which value to attack
+    target_mask = [True, True, False]
+    # specify the desired target values
+    targets = torch.tensor([[1.5, 2.0, 0.3], [0.7, -2.0, -0.4]]).to(device) 
 
     optimization_pos_losses = []
     optimization_pos_vectors = []
@@ -354,9 +373,9 @@ if __name__=="__main__":
 
         if mode != "joint":
             print("Optimizing patch...")
-            patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets[0], lr=lr_patch, epochs=num_patch_epochs, path=path)
         else:
-            patch, loss_patch, scale_factor, tx, ty = targeted_attack_joint(train_set, patch, model, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            patch, loss_patch, scale_factor, tx, ty = targeted_attack_joint(train_set, patch, model, targets=targets, target_mask=target_mask, lr=lr_patch, epochs=num_patch_epochs, path=path)
             positions = [scale_factor, tx, ty]
             pos_losses.append(loss_patch)
 
@@ -366,9 +385,9 @@ if __name__=="__main__":
         if mode != "joint":
             # optimize positions for multiple target values
             for target_idx, target in enumerate(targets):
-                print(f"Optimizing position for target {targets[target_idx].cpu().item()}...")
+                print(f"Optimizing position for target {target.cpu().numpy()}...")
                 scale_start, tx_start, ty_start = optimization_pos_vectors[-1][target_idx]
-                scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch, model, target, include_start=True, tx_start=tx_start, ty_start=ty_start, sf_start=scale_start, lr=lr_pos, num_restarts=num_pos_restarts, epochs=1, path=path)
+                scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch, model, target, target_mask=target_mask, include_start=True, tx_start=tx_start, ty_start=ty_start, sf_start=scale_start, lr=lr_pos, num_restarts=num_pos_restarts, epochs=1, path=path)
                 positions.append(torch.stack([scale_factor, tx, ty]))
                 pos_losses.append(loss_pos)
 
