@@ -39,20 +39,17 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
     
     return torch.cat(noisy_transformation_matrix)
 
-def targeted_attack_joint(dataset, patch, model, targets, lr=3e-2, epochs=10, path="eval/"):
+def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, epochs=10, path="eval/"):
 
     patch_t = patch.clone().requires_grad_(True)
-    num_target = len(targets)
-    tx = torch.FloatTensor(num_target, 1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
-    ty = torch.FloatTensor(num_target,1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
-    scaling_factor = torch.FloatTensor(num_target,1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
-    
-    # tx = torch.tensor([[0.], [0.]]).to(patch.device).requires_grad_(True)
-    # ty = torch.tensor([[0.], [0.]]).to(patch.device).requires_grad_(True)
-    # scaling_factor = torch.tensor([[0.], [0.]]).to(patch.device).requires_grad_(True)
-    opt = torch.optim.Adam([patch_t, tx, ty, scaling_factor], lr=lr)
+    positions_t = positions.clone().requires_grad_(True)
+    # num_target = len(targets)
+    # tx = torch.FloatTensor(num_target, 1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
+    # ty = torch.FloatTensor(num_target,1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
+    # scaling_factor = torch.FloatTensor(num_target,1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
 
-    #optimized_patches = []
+    opt = torch.optim.Adam([patch_t, positions_t], lr=lr)
+
     losses = []
 
     try:
@@ -66,8 +63,9 @@ def targeted_attack_joint(dataset, patch, model, targets, lr=3e-2, epochs=10, pa
                 batch = batch.to(patch.device)
 
                 target_losses = []
-                for target_idx, target in enumerate(targets):
-                    noisy_transformations = gen_noisy_transformations(len(batch), scaling_factor[target_idx], tx[target_idx], ty[target_idx])
+                for position, target in zip(positions, targets):
+                    scale_factor, tx, ty = position
+                    noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
                     patch_batch = torch.cat([patch_t for _ in range(len(batch))])
 
                     mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
@@ -98,15 +96,13 @@ def targeted_attack_joint(dataset, patch, model, targets, lr=3e-2, epochs=10, pa
             print("epoch {} loss {}".format(epoch, actual_loss))
             if actual_loss < best_loss:
                 best_patch = patch_t.clone().detach()
-                best_tx = tx.clone().detach()
-                best_ty = ty.clone().detach()
-                best_scaling = scaling_factor.clone().detach()
+                best_position = positions_t.clone().detach()
                 best_loss = actual_loss
         
     except KeyboardInterrupt:
-        print("Aborting optimization...")    
+        print("Aborting optimization...")
 
-    return best_patch, best_loss, best_scaling, best_tx, best_ty
+    return best_patch, best_loss, best_position
 
 def targeted_attack_patch(dataset, patch, model, positions, targets, target_mask=[True, True, True], lr=3e-2, epochs=10, path="eval/"):
 
@@ -262,8 +258,8 @@ def targeted_attack_position(dataset, patch, model, target, target_mask=[True, T
                     loss.backward()
                     opt.step()
                 actual_loss /= len(dataset)
-                print("restart {} epoch {} loss {}".format(restart, epoch, actual_loss))
                 if actual_loss < best_loss:
+                    print("restart {} improved loss to {}".format(restart, actual_loss))
                     best_loss = actual_loss
                     best_tx = tx.clone().detach()
                     best_ty = ty.clone().detach()
@@ -306,37 +302,43 @@ def calc_eval_loss(dataset, patch, transformation_matrix, model, target, target_
 
 if __name__=="__main__":
     import os
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # TODO: multiple attacks per patch
-    #  targets = [-2, 2]  # i.e., this patch should be possible to use to attack for y=-2 *and* y=2; we find *one* patch and *two* tx/ty/scaling results
-    #  approach 
-    #  a) change targeted_attack_patch to get tx/ty/scaling per target; the loss is the sum of the individual losses --> done
-    #  b) call targeted_attack_position once for each target --> done
+    # TODO: 
+    # 1.) read settings from config file
+    # 2.) output settings in results folder
+    # 3.) separate outputing the results and plotting in a separate script (call this script by default at the end of attacks.py)
+    # 4.) change targets to x/y/z values
 
     # SETTINGS
-    path = 'eval/debug/multi_target_regular/'
+    path = 'eval/debug/multi_target_split/'
     lr_pos = 1e-2
     lr_patch = 1e-1
     num_hl_iter = 2
-    num_pos_restarts = 2
+    num_pos_restarts = 10
     num_pos_epochs = 1
-    num_patch_epochs = 1
-    mode = "regular" # regular or joint
+    num_patch_epochs = 2
+    batch_size = 32 # TODO: try 16, 32, 64
+    mode = "split" # split, joint, hybrid
+    # define targets
+    # choose which combination of x, y, z should be attack
+    # specify which value to attack
+    target_mask = [True, True, False]
+    # specify the desired target values
+    targets = torch.tensor([[1.5, 2.0, 0.3], [0.7, -2.0, -0.4]]).to(device) 
 
     from util import load_dataset, load_model
     model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
     model_config = '160x32'
     dataset_path = 'pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle'
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
     model = load_model(path=model_path, device=device, config=model_config)
     model.eval()
-    train_set = load_dataset(path=dataset_path, batch_size=20, shuffle=True, drop_last=False, num_workers=0)
+    train_set = load_dataset(path=dataset_path, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=0)
     # train_set.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
     # train_set.dataset.labels.to(device)
     
-    test_set = load_dataset(path=dataset_path, batch_size=20, shuffle=True, drop_last=False, train=False, num_workers=0)
+    test_set = load_dataset(path=dataset_path, batch_size=batch_size, shuffle=True, drop_last=False, train=False, num_workers=0)
 
 
     os.makedirs(path, exist_ok = True)
@@ -346,20 +348,13 @@ if __name__=="__main__":
     patch_start = np.load("misc/custom_patch_resized.npy")
     patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device)
 
+    targets = torch.tensor(targets).to(device)
+
     # or start with a random patch
     # patch_start = torch.rand(1, 1, 200, 200).to(device) * 255.
 
     # or start from a white patch
     # patch_start = torch.ones(1, 1, 200, 200).to(device) * 255.
-
-
-
-    # define targets
-    # choose which combination of x, y, z should be attack
-    # specify which value to attack
-    target_mask = [True, True, False]
-    # specify the desired target values
-    targets = torch.tensor([[1.5, 2.0, 0.3], [0.7, -2.0, -0.4]]).to(device) 
 
     optimization_pos_losses = []
     optimization_pos_vectors = []
@@ -372,52 +367,50 @@ if __name__=="__main__":
 
     optimization_patches.append(patch_start)
 
-    # start with placing the patch in the middle
-    scale_factor, tx, ty = torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device)
-    #print(scale_factor.shape)
-    positions = []
-    for target_idx in range(len(targets)):
-        positions.append(torch.stack([scale_factor, tx, ty]))
+    if mode == "split" or mode == "hybrid":
+        positions = torch.FloatTensor(len(targets), 3, 1).uniform_(-1., 1.).to(device)
+    else:
+        # start with placing the patch in the middle
+        scale_factor, tx, ty = torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device)
+        positions = []
+        for target_idx in range(len(targets)):
+            positions.append(torch.stack([scale_factor, tx, ty]))
+        positions = torch.stack(positions)
 
-    #print(torch.stack(positions), torch.stack(positions).shape)
-    optimization_pos_vectors.append(torch.stack(positions))
-    
+    optimization_pos_vectors.append(positions)
 
     patch = patch_start.clone()
     
     for train_iteration in trange(num_hl_iter):
         
-        positions = []
         pos_losses = []
 
-        if mode != "joint":
+        if mode == "split":
             print("Optimizing patch...")
-            patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets[0], lr=lr_patch, epochs=num_patch_epochs, path=path)
-        else:
-            patch, loss_patch, scale_factor, tx, ty = targeted_attack_joint(train_set, patch, model, targets=targets, target_mask=target_mask, lr=lr_patch, epochs=num_patch_epochs, path=path)
-            positions = [scale_factor, tx, ty]
+            patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, target_mask=target_mask, lr=lr_patch, epochs=num_patch_epochs, path=path)
+        elif mode == "joint" or mode == "hybrid":
+            patch, loss_patch, positions = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            optimization_pos_vectors.append(positions)
+            print(optimization_pos_vectors[-1])
+
             pos_losses.append(loss_patch)
 
         optimization_patches.append(patch.clone())
         optimization_patch_losses.append(loss_patch)
 
-        if mode != "joint":
+        if mode == "split" or mode == "hybrid":
             # optimize positions for multiple target values
+            positions = []
             for target_idx, target in enumerate(targets):
                 print(f"Optimizing position for target {target.cpu().numpy()}...")
                 scale_start, tx_start, ty_start = optimization_pos_vectors[-1][target_idx]
                 scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch, model, target, target_mask=target_mask, include_start=True, tx_start=tx_start, ty_start=ty_start, sf_start=scale_start, lr=lr_pos, num_restarts=num_pos_restarts, epochs=1, path=path)
                 positions.append(torch.stack([scale_factor, tx, ty]))
                 pos_losses.append(loss_pos)
+            positions = torch.stack(positions)
 
-        # TODO: improve!
-        # For the joint case, torch.stack(positions) is of shape (3, 2, 1),
-        # otherwise the shape is (2, 3, 1). The permute forces the correct shape.
-        if mode != "joint":
-            optimization_pos_vectors.append(torch.stack(positions))
-        else:
-            optimization_pos_vectors.append(torch.stack(positions).permute(1, 0, 2))
-        
+        optimization_pos_vectors.append(positions)
+        print(optimization_pos_vectors[-1])
         optimization_pos_losses.append(torch.stack(pos_losses))
 
         train_loss = []
