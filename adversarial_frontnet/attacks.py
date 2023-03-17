@@ -41,12 +41,10 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
     
     return torch.cat(noisy_transformation_matrix)
 
-def targeted_attack_joint(dataset, patch, model, positions, targets, target_mask=[True, True, True], lr=3e-2, epochs=10, path="eval/"):
+def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, epochs=10, path="eval/"):
 
     patch_t = patch.clone().requires_grad_(True)
     positions_t = positions.clone().requires_grad_(True)
-    print(positions_t)
-    target_mask = torch.tensor(target_mask).to(patch.device)
     # num_target = len(targets)
     # tx = torch.FloatTensor(num_target, 1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
     # ty = torch.FloatTensor(num_target,1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
@@ -92,7 +90,7 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, target_mask
                     pred = pred.squeeze(2).mT
 
                      # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
-                    target_batch = target_batch + (pred * ~target_mask)
+                    target_batch = torch.where(torch.isnan(target_batch), pred, target_batch)
                     
                     target_losses.append(mse_loss(target_batch, pred))
 
@@ -121,12 +119,10 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, target_mask
 
     return best_patch, best_loss, best_position
 
-def targeted_attack_patch(dataset, patch, model, positions, targets, target_mask=[True, True, True], lr=3e-2, epochs=10, path="eval/"):
+def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, epochs=10, path="eval/"):
 
     patch_t = patch.clone().requires_grad_(True)
     opt = torch.optim.Adam([patch_t], lr=lr)
-
-    target_mask = torch.tensor(target_mask).to(patch.device)
 
     #optimized_patches = []
     losses = []
@@ -173,7 +169,7 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, target_mask
                     pred = pred.squeeze(2).mT
 
                     # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
-                    target_batch = target_batch + (pred * ~target_mask)
+                    target_batch = torch.where(torch.isnan(target_batch), pred, target_batch)
                     
                     target_losses.append(mse_loss(target_batch, pred))
                 
@@ -202,10 +198,9 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, target_mask
     #losses = torch.stack(losses)
     return best_patch, best_loss#, losses
 
-def targeted_attack_position(dataset, patch, model, target, target_mask=[True, True, True], lr=3e-2, include_start=False, tx_start=0., ty_start=0., sf_start=0.1, num_restarts=50, epochs=5, path="eval/targeted/"): 
+def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_start=False, tx_start=0., ty_start=0., sf_start=0.1, num_restarts=50, epochs=5, path="eval/targeted/"): 
     try: 
         best_loss = np.inf
-        target_mask = torch.tensor(target_mask).to(patch.device)
 
         for restart in range(num_restarts):
             if include_start and restart == 0:
@@ -260,7 +255,7 @@ def targeted_attack_position(dataset, patch, model, target, target_mask=[True, T
                     pred = pred.squeeze(2).mT
 
                     # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
-                    target_batch = target_batch + (pred * ~target_mask)
+                    target_batch = torch.where(torch.isnan(target_batch), pred, target_batch)
                     
                     loss = mse_loss(target_batch, pred)
 
@@ -282,9 +277,8 @@ def targeted_attack_position(dataset, patch, model, target, target_mask=[True, T
 
     return best_scaling, best_tx, best_ty, best_loss
 
-def calc_eval_loss(dataset, patch, transformation_matrix, model, target, target_mask = [True, True, True]):
+def calc_eval_loss(dataset, patch, transformation_matrix, model, target):
     actual_loss = torch.tensor(0.).to(patch.device)
-    target_mask = torch.tensor(target_mask).to(patch.device)
 
     for _, data in enumerate(dataset):
         batch, _ = data
@@ -301,7 +295,7 @@ def calc_eval_loss(dataset, patch, transformation_matrix, model, target, target_
         pred = pred.squeeze(2).mT
 
         # only target x,y and z which are previously chosen, otherwise keep x/y/z to prediction
-        target_batch = target_batch + (pred * ~target_mask)
+        target_batch = torch.where(torch.isnan(target_batch), pred, target_batch)
         
         loss = mse_loss(target_batch, pred)
         actual_loss += loss.clone().detach()
@@ -314,30 +308,38 @@ def calc_eval_loss(dataset, patch, transformation_matrix, model, target, target_
 
 if __name__=="__main__":
     import os
+    import yaml
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # TODO: 
-    # 1.) read settings from config file
-    # 2.) output settings in results folder
+    # 1.) read settings from config file --> done
+    # 2.) output settings in results folder --> done
     # 3.) separate outputing the results and plotting in a separate script (call this script by default at the end of attacks.py) --> moved to script, but script needs improvement
     # 4.) change targets to x/y/z values --> done
 
     # SETTINGS
-    path = Path('eval/debug/multi_target_joint/')
-    lr_pos = 1e-2
-    lr_patch = 1e-1
-    num_hl_iter = 2
-    num_pos_restarts = 10
-    num_pos_epochs = 1
-    num_patch_epochs = 5
-    batch_size = 32 # TODO: try 16, 32, 64
-    mode = "joint" # split, joint, hybrid
-    # define targets
-    # choose which combination of x, y, z should be attack
-    # specify which value to attack
-    target_mask = [True, True, False]
-    # specify the desired target values
-    targets = torch.tensor([[1.5, 2.0, 0.3], [0.7, -2.0, -0.4]]).to(device) 
+    with open('settings.yaml') as f:
+        settings = yaml.load(f, Loader=yaml.FullLoader)
+
+    # save settings directly to result folder for later use
+    path = Path(settings['path'])
+    os.makedirs(path, exist_ok = True)
+    with open(path / 'settings.yaml', 'w') as f:
+        yaml.dump(settings, f)
+
+    lr_pos = settings['lr_pos']
+    lr_patch = settings['lr_patch']
+    num_hl_iter = settings['num_hl_iter']
+    num_pos_restarts = settings['num_pos_restarts']
+    num_pos_epochs = settings['num_pos_epochs']
+    num_patch_epochs = settings['num_patch_epochs']
+    batch_size = settings['batch_size']
+    mode = settings['mode']
+
+    # get target values in correct shape and move tensor to device
+    targets = [values for _, values in settings['targets'].items()]
+    targets = np.array(targets, dtype=float).T
+    targets = torch.from_numpy(targets).to(device).float()
 
     from util import load_dataset, load_model
     model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
@@ -352,8 +354,6 @@ if __name__=="__main__":
     
     test_set = load_dataset(path=dataset_path, batch_size=batch_size, shuffle=True, drop_last=False, train=False, num_workers=0)
 
-
-    os.makedirs(path, exist_ok = True)
 
     # load the patch from misc folder
     # TODO: add the other custom face patches
@@ -397,9 +397,9 @@ if __name__=="__main__":
 
         if mode == "split":
             print("Optimizing patch...")
-            patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, target_mask=target_mask, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
         elif mode == "joint" or mode == "hybrid":
-            patch, loss_patch, positions = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, target_mask=target_mask, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            patch, loss_patch, positions = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
             optimization_pos_vectors.append(positions)
             print(optimization_pos_vectors[-1])
 
@@ -414,7 +414,7 @@ if __name__=="__main__":
             for target_idx, target in enumerate(targets):
                 print(f"Optimizing position for target {target.cpu().numpy()}...")
                 scale_start, tx_start, ty_start = optimization_pos_vectors[-1][target_idx]
-                scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch, model, target, target_mask=target_mask, include_start=True, tx_start=tx_start, ty_start=ty_start, sf_start=scale_start, lr=lr_pos, num_restarts=num_pos_restarts, epochs=1, path=path)
+                scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch, model, target, include_start=True, tx_start=tx_start, ty_start=ty_start, sf_start=scale_start, lr=lr_pos, num_restarts=num_pos_restarts, epochs=1, path=path)
                 positions.append(torch.stack([scale_factor, tx, ty]))
                 pos_losses.append(loss_pos)
             positions = torch.stack(positions)
@@ -484,14 +484,14 @@ if __name__=="__main__":
     test_batch = test_batch.to(device)
 
     boxplot_data = []
-    target_mask = torch.tensor(target_mask).to(patch.device)
+    #target_mask = torch.tensor(target_mask).to(patch.device)
     for target_idx, target in enumerate(targets):
         scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx])
         transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
         pred_base = model(test_batch.float())
         pred_base = torch.stack(pred_base[:3]).squeeze(2).mT
         target_batch = target.repeat(len(test_batch), 1)
-        target_batch = target_batch + (pred_base * ~target_mask)
+        target_batch = torch.where(torch.isnan(target_batch), pred_base, target_batch)
         loss_base = torch.tensor([mse_loss(target_batch[i], pred_base[i]) for i in range(len(test_batch))])
 
         mod_img = place_patch(test_batch, patch_start, transformation_matrix)
@@ -499,7 +499,7 @@ if __name__=="__main__":
         pred_start_patch = model(mod_img.float())
         pred_start_patch = torch.stack(pred_start_patch[:3]).squeeze(2).mT
         target_batch = target.repeat(len(test_batch), 1)
-        target_batch = target_batch + (pred_start_patch * ~target_mask)
+        target_batch = torch.where(torch.isnan(target_batch), pred_start_patch, target_batch)
         loss_start_patch = torch.tensor([mse_loss(target_batch[i], pred_start_patch[i]) for i in range(len(test_batch))])
 
         mod_img = place_patch(test_batch, patch, transformation_matrix)
@@ -507,10 +507,9 @@ if __name__=="__main__":
         pred_opt_patch = model(mod_img.float())
         pred_opt_patch = torch.stack(pred_opt_patch[:3]).squeeze(2).mT
         target_batch = target.repeat(len(test_batch), 1)
-        target_batch = target_batch + (pred_opt_patch * ~target_mask)
+        target_batch = torch.where(torch.isnan(target_batch), pred_opt_patch, target_batch)
         loss_opt_patch = torch.tensor([mse_loss(target_batch[i], pred_opt_patch[i]) for i in range(len(test_batch))])
 
-        #boxplot_data.append([pred_base.squeeze(1).detach().cpu().numpy(), pred_start_patch.squeeze(1).detach().cpu().numpy(), pred_opt_patch.squeeze(1).detach().cpu().numpy()])
         boxplot_data.append(torch.stack([loss_base.detach().cpu(), loss_start_patch.detach().cpu(), loss_opt_patch.detach().cpu()]))
 
 
@@ -538,6 +537,6 @@ if __name__=="__main__":
     #     final_images.append(place_patch(base_img, patch, transformation_matrix))
     # #prediction_mod = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
-    from plots import plot_results
-    # TODO: read targets from config, add "final_images" to plots
-    plot_results(path, targets.cpu().numpy())
+    # from plots import plot_results
+    # # TODO: read targets from config, add "final_images" to plots
+    # plot_results(path, targets.cpu().numpy())
