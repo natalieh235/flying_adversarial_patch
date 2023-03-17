@@ -20,31 +20,31 @@ def plot_results(path):
 
     mode = settings['mode']
 
-    print(targets)
+    # print(targets)
 
     optimization_patches = np.load(path / 'patches.npy')
-    print(optimization_patches.shape)
+    # print(optimization_patches.shape)
     
     optimization_patch_losses = np.load(path / 'patch_losses.npy')
-    print(optimization_patch_losses.shape)
+    # print(optimization_patch_losses.shape)
 
     optimization_pos_losses = np.load(path / 'position_losses.npy')
-    print(optimization_pos_losses.shape)
+    # print(optimization_pos_losses.shape)
 
     all_sf, all_tx, all_ty = np.load(path / 'positions_norm.npy')
-    print(all_sf.shape)
-    print(all_tx.shape)
-    print(all_ty.shape)
+    # print(all_sf.shape)
+    # print(all_tx.shape)
+    # print(all_ty.shape)
     
     train_losses = np.load(path / 'losses_train.npy')
     test_losses = np.load(path / 'losses_test.npy')
 
-    print(train_losses.shape)
-    print(test_losses.shape)
+    # print(train_losses.shape)
+    # print(test_losses.shape)
 
     boxplot_data = np.load(path / 'boxplot_data.npy')
     boxplot_data = np.rollaxis(boxplot_data, 2, 1)
-    print(boxplot_data.shape)
+    # print(boxplot_data.shape)
 
 
     with PdfPages(Path(path) / 'result.pdf') as pdf:
@@ -66,14 +66,14 @@ def plot_results(path):
         pdf.savefig(fig)
         plt.close(fig)
 
-        if mode != "joint":
+        if mode == 'hybrid' or mode == 'split':
             fig = plt.figure()
             ax = fig.add_subplot(111)
             ax.set_title(f'Loss position optimization for all iterations')
             for target_idx, target in enumerate(targets):
                 ax.plot(optimization_pos_losses[target_idx], label=f'target {target}')
             ax.set_xlabel('iteration')
-            ax.set_ylabel('mean l2 distance')
+            ax.set_ylabel('MSE')
             ax.legend()
             pdf.savefig(fig)
             plt.close(fig)
@@ -86,7 +86,7 @@ def plot_results(path):
             ax.plot(test_losses[..., target_idx], label=f'test set, target {target}')
             ax.legend()
             ax.set_xlabel('iteration')
-            ax.set_ylabel('mean l2 distance')
+            ax.set_ylabel('MSE')
             pdf.savefig(fig)
             plt.close(fig)
 

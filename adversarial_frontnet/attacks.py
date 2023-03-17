@@ -375,7 +375,7 @@ if __name__=="__main__":
 
     optimization_patches.append(patch_start)
 
-    if mode == "split" or mode == "hybrid":
+    if mode == "split" or mode == "hybrid" or mode == "fixed":
         positions = torch.FloatTensor(len(targets), 3, 1).uniform_(-1., 1.).to(device)
     else:
         # start with placing the patch in the middle
@@ -393,7 +393,7 @@ if __name__=="__main__":
         
         pos_losses = []
 
-        if mode == "split":
+        if mode == "split" or mode == "fixed":
             print("Optimizing patch...")
             patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
         elif mode == "joint" or mode == "hybrid":
@@ -416,6 +416,8 @@ if __name__=="__main__":
                 positions.append(torch.stack([scale_factor, tx, ty]))
                 pos_losses.append(loss_pos)
             positions = torch.stack(positions)
+        elif mode == "fixed":
+            pos_losses = [torch.tensor([0.])]
 
         optimization_pos_vectors.append(positions)
         print(optimization_pos_vectors[-1])
