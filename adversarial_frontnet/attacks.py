@@ -41,10 +41,12 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
     
     return torch.cat(noisy_transformation_matrix)
 
-def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, epochs=10, path="eval/"):
+def targeted_attack_joint(dataset, patch, model, positions, targets, target_mask=[True, True, True], lr=3e-2, epochs=10, path="eval/"):
 
     patch_t = patch.clone().requires_grad_(True)
     positions_t = positions.clone().requires_grad_(True)
+    print(positions_t)
+    target_mask = torch.tensor(target_mask).to(patch.device)
     # num_target = len(targets)
     # tx = torch.FloatTensor(num_target, 1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
     # ty = torch.FloatTensor(num_target,1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
@@ -65,7 +67,7 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                 batch = batch.to(patch.device)
 
                 target_losses = []
-                for position, target in zip(positions, targets):
+                for position, target in zip(positions_t, targets):
                     scale_factor, tx, ty = position
                     noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
                     patch_batch = torch.cat([patch_t for _ in range(len(batch))])
@@ -81,8 +83,21 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                     x, y, z, phi = model(mod_img)
 
                     # calculate mean l2 losses (target, y) for all images in batch
-                    all_l2 = torch.sqrt(((y-target)**2)) 
-                    target_losses.append(torch.mean(all_l2))
+                    # all_l2 = torch.sqrt(((y-target)**2)) 
+                    # target_losses.append(torch.mean(all_l2))
+                    # prepare shapes for MSE loss
+                    target_batch = target.repeat(len(batch), 1)
+                    # TODO: improve readbility!
+                    pred = torch.stack([x, y, z])
+                    pred = pred.squeeze(2).mT
+
+                     # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
+                    target_batch = target_batch + (pred * ~target_mask)
+                    
+                    target_losses.append(mse_loss(target_batch, pred))
+
+
+
 
                 loss = torch.sum(torch.stack(target_losses))
                 actual_loss += loss.clone().detach()
@@ -151,18 +166,13 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, target_mask
                     x, y, z, phi = model(mod_img)
 
                     # calculate mean l2 losses (target, y) for all images in batch
-                    
-                    # all_l2 = torch.sqrt(((y-target)**2)) 
-                    # target_losses.append(torch.mean(all_l2))
-
-                    # calculate mean l2 losses (target, y) for all images in batch
                     # prepare shapes for MSE loss
                     target_batch = target.repeat(len(batch), 1)
                     # TODO: improve readbility!
                     pred = torch.stack([x, y, z])
                     pred = pred.squeeze(2).mT
 
-                    # only target x,y and z which are previously chosen, otherwise keep x/y/z to prediction
+                    # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
                     target_batch = target_batch + (pred * ~target_mask)
                     
                     target_losses.append(mse_loss(target_batch, pred))
@@ -249,7 +259,7 @@ def targeted_attack_position(dataset, patch, model, target, target_mask=[True, T
                     pred = torch.stack([x, y, z])
                     pred = pred.squeeze(2).mT
 
-                    # only target x,y and z which are previously chosen, otherwise keep x/y/z to prediction
+                    # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
                     target_batch = target_batch + (pred * ~target_mask)
                     
                     loss = mse_loss(target_batch, pred)
@@ -313,15 +323,15 @@ if __name__=="__main__":
     # 4.) change targets to x/y/z values --> implemented in split + hybrid
 
     # SETTINGS
-    path = Path('eval/debug/multi_target_split/')
+    path = Path('eval/debug/multi_target_joint/')
     lr_pos = 1e-2
     lr_patch = 1e-1
-    num_hl_iter = 2
+    num_hl_iter = 10
     num_pos_restarts = 10
     num_pos_epochs = 1
-    num_patch_epochs = 2
+    num_patch_epochs = 10
     batch_size = 32 # TODO: try 16, 32, 64
-    mode = "split" # split, joint, hybrid
+    mode = "joint" # split, joint, hybrid
     # define targets
     # choose which combination of x, y, z should be attack
     # specify which value to attack
@@ -389,7 +399,7 @@ if __name__=="__main__":
             print("Optimizing patch...")
             patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, target_mask=target_mask, lr=lr_patch, epochs=num_patch_epochs, path=path)
         elif mode == "joint" or mode == "hybrid":
-            patch, loss_patch, positions = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            patch, loss_patch, positions = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, target_mask=target_mask, lr=lr_patch, epochs=num_patch_epochs, path=path)
             optimization_pos_vectors.append(positions)
             print(optimization_pos_vectors[-1])
 
