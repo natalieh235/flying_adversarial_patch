@@ -60,7 +60,7 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
             actual_loss = torch.tensor(0.).to(patch.device)
             for _, data in enumerate(dataset):
                 batch, _ = data
-                batch = batch.to(patch.device)
+                batch = batch.to(patch.device) / 255. # limit images to range [0-1]
 
                 target_losses = []
                 for position, target in zip(positions_t, targets):
@@ -68,7 +68,8 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                     noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
                     patch_batch = torch.cat([patch_t for _ in range(len(batch))])
 
-                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
+                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations) 
+                    mod_img *= 255. # convert input images back to range [0-255.]
 
                     # add noise to patch+background
                     mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
@@ -104,7 +105,7 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                 loss.backward()
                 opt.step()
 
-                patch_t.data.clamp_(0., 255.)
+                patch_t.data.clamp_(0., 1.)
             actual_loss /= len(dataset)
             print("epoch {} loss {}".format(epoch, actual_loss))
             if actual_loss < best_loss:
@@ -133,7 +134,7 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
             actual_loss = torch.tensor(0.).to(patch.device)
             for _, data in enumerate(dataset):
                 batch, _ = data
-                batch = batch.to(patch.device)
+                batch = batch.to(patch.device) / 255. # limit images to range [0-1]
 
                 #optimized_patches.append(patch_t.clone().detach())
 
@@ -150,6 +151,7 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
                     patch_batch = torch.cat([patch_t for _ in range(len(batch))])
 
                     mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
+                    mod_img *= 255.  # convert input images back to range [0-255.]
 
                     # add noise to patch+background
                     mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)
@@ -181,7 +183,7 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
                 loss.backward()
                 opt.step()
 
-                patch_t.data.clamp_(0., 255.)
+                patch_t.data.clamp_(0., 1.)
 
                 #optimized_patches.append(patch_t.clone().detach())
             actual_loss /= len(dataset)
@@ -233,12 +235,13 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
                 actual_loss = torch.tensor(0.).to(patch.device)
                 for _, data in enumerate(dataset):
                     batch, _ = data
-                    batch = batch.to(patch.device)
+                    batch = batch.to(patch.device) / 255. # limit images to range [0-1]
             
                     noisy_transformations = gen_noisy_transformations(len(batch), scaling_factor, tx, ty)
                     patch_batch = patch.repeat(len(batch), 1, 1, 1)
  
                     mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
+                    mod_img *= 255.  # convert input images back to range [0-255.]
                     # add noise to patch+background
                     mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(batch.shape).to(patch.device)    
                     mod_img.clamp_(0., 255.)
@@ -280,9 +283,10 @@ def calc_eval_loss(dataset, patch, transformation_matrix, model, target):
 
     for _, data in enumerate(dataset):
         batch, _ = data
-        batch = batch.to(patch.device)
+        batch = batch.to(patch.device) / 255. # limit images to range [0-1]
 
         mod_img = place_patch(batch, patch, transformation_matrix)
+        mod_img *= 255. # convert input images back to range [0-255.]
         mod_img.clamp_(0., 255.)
 
         x, y, z, phi = model(mod_img)
@@ -356,7 +360,8 @@ if __name__=="__main__":
     # load the patch from misc folder
     # TODO: add the other custom face patches
     patch_start = np.load("misc/custom_patch_resized.npy")
-    patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device)
+    patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device) / 255.
+    patch_start.clamp_(0., 1.)
 
     # or start with a random patch
     # patch_start = torch.rand(1, 1, 200, 200).to(device) * 255.
@@ -412,7 +417,7 @@ if __name__=="__main__":
             for target_idx, target in enumerate(targets):
                 print(f"Optimizing position for target {target.cpu().numpy()}...")
                 scale_start, tx_start, ty_start = optimization_pos_vectors[-1][target_idx]
-                scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch, model, target, include_start=True, tx_start=tx_start, ty_start=ty_start, sf_start=scale_start, lr=lr_pos, num_restarts=num_pos_restarts, epochs=1, path=path)
+                scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch, model, target, include_start=True, tx_start=tx_start, ty_start=ty_start, sf_start=scale_start, lr=lr_pos, num_restarts=num_pos_restarts, epochs=num_pos_epochs, path=path)
                 positions.append(torch.stack([scale_factor, tx, ty]))
                 pos_losses.append(loss_pos)
             positions = torch.stack(positions)
