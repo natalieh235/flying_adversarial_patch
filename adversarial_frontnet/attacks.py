@@ -8,8 +8,6 @@ from torchvision.transforms.functional import affine
 
 from patch_placement import place_patch
 
-from util import plot_saliency
-
 from pathlib import Path
 
 def get_transformation(sf, tx, ty):
@@ -537,6 +535,6 @@ if __name__=="__main__":
     #     final_images.append(place_patch(base_img, patch, transformation_matrix))
     # #prediction_mod = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
-    # from plots import plot_results
-    # # TODO: read targets from config, add "final_images" to plots
-    # plot_results(path, targets.cpu().numpy())
+    from plots import plot_results
+    # TODO: read targets from config, add "final_images" to plots
+    plot_results(path)
