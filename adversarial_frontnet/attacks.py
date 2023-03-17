@@ -320,16 +320,16 @@ if __name__=="__main__":
     # 1.) read settings from config file
     # 2.) output settings in results folder
     # 3.) separate outputing the results and plotting in a separate script (call this script by default at the end of attacks.py) --> moved to script, but script needs improvement
-    # 4.) change targets to x/y/z values --> implemented in split + hybrid
+    # 4.) change targets to x/y/z values --> done
 
     # SETTINGS
     path = Path('eval/debug/multi_target_joint/')
     lr_pos = 1e-2
     lr_patch = 1e-1
-    num_hl_iter = 10
+    num_hl_iter = 2
     num_pos_restarts = 10
     num_pos_epochs = 1
-    num_patch_epochs = 10
+    num_patch_epochs = 5
     batch_size = 32 # TODO: try 16, 32, 64
     mode = "joint" # split, joint, hybrid
     # define targets
@@ -470,61 +470,73 @@ if __name__=="__main__":
     # save all results in numpy arrays for later use
     np.save(path / 'patches.npy', optimization_patches.squeeze(1).squeeze(1).cpu().numpy())
     np.save(path / 'patch_losses.npy', optimization_patch_losses.cpu().numpy())
-    np.save(path / 'positions.npy', np.array([all_sf.cpu().numpy(), all_tx.cpu().numpy(), all_ty.cpu().numpy()]))
+    np.save(path / 'positions.npy', optimization_pos_vectors.cpu().numpy())
+    np.save(path / 'positions_norm.npy', np.array([all_sf.cpu().numpy(), all_tx.cpu().numpy(), all_ty.cpu().numpy()]))
     np.save(path / 'position_losses.npy', optimization_pos_losses.cpu().numpy())
     np.save(path / 'losses_train.npy', train_losses.cpu().numpy())
     np.save(path / 'losses_test.npy', test_losses.cpu().numpy())
 
 
-    # evaluation on test set
+    # final evaluation on test set
     print("Evaluation...")
 
     test_batch, test_gt = test_set.dataset[:]
     test_batch = test_batch.to(device)
 
-    # TODO: adapt for multi-target case
     boxplot_data = []
+    target_mask = torch.tensor(target_mask).to(patch.device)
     for target_idx, target in enumerate(targets):
         scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx])
         transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
-        _, pred_base, _, _ = model(test_batch.float())
+        pred_base = model(test_batch.float())
+        pred_base = torch.stack(pred_base[:3]).squeeze(2).mT
+        target_batch = target.repeat(len(test_batch), 1)
+        target_batch = target_batch + (pred_base * ~target_mask)
+        loss_base = torch.tensor([mse_loss(target_batch[i], pred_base[i]) for i in range(len(test_batch))])
 
         mod_img = place_patch(test_batch, patch_start, transformation_matrix)
         mod_img.clamp_(0., 255.)
-        _, pred_start_patch, _, _ = model(mod_img.float())
+        pred_start_patch = model(mod_img.float())
+        pred_start_patch = torch.stack(pred_start_patch[:3]).squeeze(2).mT
+        target_batch = target.repeat(len(test_batch), 1)
+        target_batch = target_batch + (pred_start_patch * ~target_mask)
+        loss_start_patch = torch.tensor([mse_loss(target_batch[i], pred_start_patch[i]) for i in range(len(test_batch))])
 
         mod_img = place_patch(test_batch, patch, transformation_matrix)
         mod_img.clamp_(0., 255.)
+        pred_opt_patch = model(mod_img.float())
+        pred_opt_patch = torch.stack(pred_opt_patch[:3]).squeeze(2).mT
+        target_batch = target.repeat(len(test_batch), 1)
+        target_batch = target_batch + (pred_opt_patch * ~target_mask)
+        loss_opt_patch = torch.tensor([mse_loss(target_batch[i], pred_opt_patch[i]) for i in range(len(test_batch))])
 
-        _, pred_opt_patch, _, _ = model(mod_img.float())
+        #boxplot_data.append([pred_base.squeeze(1).detach().cpu().numpy(), pred_start_patch.squeeze(1).detach().cpu().numpy(), pred_opt_patch.squeeze(1).detach().cpu().numpy()])
+        boxplot_data.append(torch.stack([loss_base.detach().cpu(), loss_start_patch.detach().cpu(), loss_opt_patch.detach().cpu()]))
 
-        boxplot_data.append([pred_base.squeeze(1).detach().cpu().numpy(), pred_start_patch.squeeze(1).detach().cpu().numpy(), pred_opt_patch.squeeze(1).detach().cpu().numpy()])
+
+    np.save(path / 'boxplot_data.npy', torch.stack(boxplot_data).cpu().numpy())
+
+    # # create result pdf
+    # # get one image and ground-truth pose  
+    # base_img, ground_truth = train_set.dataset.__getitem__(0)
+    # base_img = base_img.unsqueeze(0).to(device)
+    # ground_truth = ground_truth.to(device)
+
+    # # get prediction for unaltered base image
+    # prediction = torch.stack(model(base_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
+
+    # # place the initial, unaltered patch in base image at the optimal position and get prediction
+    # # mod_start = place_patch(base_img, patch_start, transformation_matrix)
+    # # prediction_start = torch.stack(model(mod_start)).permute(1, 0, 2).squeeze(2).squeeze(0)
+
+    # # place the optimized patch in the image at the optimal position and get prediction
+    # final_images = []
+    # for target_idx in range(len(targets)):
+    #     scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx])
+    #     transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
         
-    np.save(path / 'boxplots.npy', np.array(boxplot_data))
-
-    # vline_idx_patch = [i*len(loss_patch) for i in range(1, 10)]
-
-    # create result pdf
-    # get one image and ground-truth pose  
-    base_img, ground_truth = train_set.dataset.__getitem__(0)
-    base_img = base_img.unsqueeze(0).to(device)
-    ground_truth = ground_truth.to(device)
-
-    # get prediction for unaltered base image
-    prediction = torch.stack(model(base_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
-
-    # place the initial, unaltered patch in base image at the optimal position and get prediction
-    # mod_start = place_patch(base_img, patch_start, transformation_matrix)
-    # prediction_start = torch.stack(model(mod_start)).permute(1, 0, 2).squeeze(2).squeeze(0)
-
-    # place the optimized patch in the image at the optimal position and get prediction
-    final_images = []
-    for target_idx in range(len(targets)):
-        scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx])
-        transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
-        
-        final_images.append(place_patch(base_img, patch, transformation_matrix))
-    #prediction_mod = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
+    #     final_images.append(place_patch(base_img, patch, transformation_matrix))
+    # #prediction_mod = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
     from plots import plot_results
     # TODO: read targets from config, add "final_images" to plots
