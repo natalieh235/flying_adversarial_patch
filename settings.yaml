@@ -3,8 +3,8 @@ targets:
   x : [1.0, 0.5]
   y : [-2, null]
   z : [null, null]
-lr_pos: 0.01
-lr_patch: 0.1
+lr_pos: 0.005
+lr_patch: 0.005
 num_hl_iter: 2
 num_pos_restarts: 10
 num_pos_epochs: 1

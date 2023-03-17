@@ -1,4 +1,7 @@
 import numpy as np
+import os
+import yaml
+import argparse
 import torch
 from torch.nn.functional import mse_loss
 from tqdm import tqdm, trange
@@ -309,18 +312,14 @@ def calc_eval_loss(dataset, patch, transformation_matrix, model, target):
 
 
 if __name__=="__main__":
-    import os
-    import yaml
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--file', default='settings.yaml')
+    args = parser.parse_args()
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # TODO: 
-    # 1.) read settings from config file --> done
-    # 2.) output settings in results folder --> done
-    # 3.) separate outputing the results and plotting in a separate script (call this script by default at the end of attacks.py) --> moved to script, but script needs improvement
-    # 4.) change targets to x/y/z values --> done
-
     # SETTINGS
-    with open('settings.yaml') as f:
+    with open(args.file) as f:
         settings = yaml.load(f, Loader=yaml.FullLoader)
 
     # save settings directly to result folder for later use
