@@ -486,20 +486,21 @@ if __name__=="__main__":
     print("Evaluation...")
 
     test_batch, test_gt = test_set.dataset[:]
-    test_batch = test_batch.to(device)
+    test_batch = test_batch.to(device) / 255. # limit images to range [0-1]
 
     boxplot_data = []
     #target_mask = torch.tensor(target_mask).to(patch.device)
     for target_idx, target in enumerate(targets):
         scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx])
         transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
-        pred_base = model(test_batch.float())
+        pred_base = model(test_batch.float() * 255.)
         pred_base = torch.stack(pred_base[:3]).squeeze(2).mT
         target_batch = target.repeat(len(test_batch), 1)
         target_batch = torch.where(torch.isnan(target_batch), pred_base, target_batch)
         loss_base = torch.tensor([mse_loss(target_batch[i], pred_base[i]) for i in range(len(test_batch))])
 
         mod_img = place_patch(test_batch, patch_start, transformation_matrix)
+        mod_img *= 255. # convert input images back to range [0-255.]
         mod_img.clamp_(0., 255.)
         pred_start_patch = model(mod_img.float())
         pred_start_patch = torch.stack(pred_start_patch[:3]).squeeze(2).mT
@@ -508,6 +509,7 @@ if __name__=="__main__":
         loss_start_patch = torch.tensor([mse_loss(target_batch[i], pred_start_patch[i]) for i in range(len(test_batch))])
 
         mod_img = place_patch(test_batch, patch, transformation_matrix)
+        mod_img *= 255. # convert input images back to range [0-255.]
         mod_img.clamp_(0., 255.)
         pred_opt_patch = model(mod_img.float())
         pred_opt_patch = torch.stack(pred_opt_patch[:3]).squeeze(2).mT
@@ -543,5 +545,5 @@ if __name__=="__main__":
     # #prediction_mod = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
 
     from plots import plot_results
-    # TODO: read targets from config, add "final_images" to plots
+    # TODO: add "final_images" to plots
     plot_results(path)
