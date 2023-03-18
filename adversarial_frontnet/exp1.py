@@ -23,7 +23,7 @@ def on_sigterm():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--file', default='settings.yaml')
+    parser.add_argument('--file', default='exp1.yaml')
     parser.add_argument('--norun', action='store_true')
     args = parser.parse_args()
 
@@ -35,11 +35,12 @@ def main():
 
     # create possible settings
     all_settings = []
-    for mode in ['fixed', 'split', 'joint', 'hybrid']:
-        s = copy.copy(base_settings)
-        s['mode'] = mode
-        s['path'] = "eval/" + mode + "0"
-        all_settings.append(s)
+    for i in range(10):
+        for mode in ['fixed', 'split', 'joint', 'hybrid']:
+            s = copy.copy(base_settings)
+            s['mode'] = mode
+            s['path'] = "eval/exp1/" + mode + str(i)
+            all_settings.append(s)
 
     if not args.norun:
         # start 4 worker processes
