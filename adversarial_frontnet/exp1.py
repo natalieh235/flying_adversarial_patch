@@ -26,7 +26,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--file', default='exp1.yaml')
     parser.add_argument('--norun', action='store_true')
-    parser.add_argument('-j', default=4)
+    parser.add_argument('-j', type=int, default=4)
+    parser.add_argument('--trials', type=int, default=10)
     args = parser.parse_args()
 
     signal.signal(signal.SIGTERM, on_sigterm)
@@ -37,7 +38,7 @@ def main():
 
     # create possible settings
     all_settings = []
-    for i in range(10):
+    for i in range(args.trials):
         for mode in ['fixed', 'split', 'joint', 'hybrid']:
             s = copy.copy(base_settings)
             s['mode'] = mode
