@@ -35,7 +35,6 @@ def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, img_idx=0):
     final_images = []
     for target_idx in range(len(targets)):
         transformation_matrix = get_transformation(scale_norm[target_idx], tx_norm[target_idx], ty_norm[target_idx])
-        print(transformation_matrix)
         
         final_images.append(place_patch(base_img, patch, transformation_matrix).numpy()[0][0])
 
@@ -213,6 +212,7 @@ def gen_dict(paths):
         'patches': combine_arrays(paths, 'patches.npy'),
         'patch_loss': combine_arrays(paths, 'patch_losses.npy'),
         'pos_loss': combine_arrays(paths, 'position_losses.npy'),
+        'positions': combine_arrays(paths, 'positions_norm.npy'),
         'train_loss': np.rollaxis(combine_arrays(paths, 'losses_train.npy'), 2, 0),
         'test_loss': np.rollaxis(combine_arrays(paths, 'losses_test.npy'), 2, 0),
         'boxplot_data': np.rollaxis(combine_arrays(paths, 'boxplot_data.npy'), 1, 0)
@@ -270,6 +270,9 @@ def eval_multi_run(path):
     targets = [values for _, values in settings['targets'].items()]
     targets = np.array(targets, dtype=float).T
 
+    for mode in modes:
+        all = results[mode]['test_loss']
+        print(mode, "mean", np.mean(all), "std", np.std(all))
 
     with PdfPages(Path(path) / 'combined_result.pdf') as pdf:
         for mode, result in zip(modes, results):
@@ -286,8 +289,31 @@ def eval_multi_run(path):
                 boxplot = gen_boxplots(boxplot_mean.T, title=f'Patches placed at optimal position, mode: {mode}, runs: {runs}, target: {target}', labels=['base images', 'starting patch', 'optimized patch'], ylabel='mean MSE')
                 pdf.savefig(boxplot)
                 pdf.close
-        
 
+            final_images = []
+            for run_idx, position in enumerate(results[mode]['positions']):
+                scale_norm, tx_norm, ty_norm = position[:, -1, :]
+                last_patch = results[mode]['patches'][run_idx][-1]
+                final_images.append(img_placed_patch(targets, last_patch, scale_norm, tx_norm, ty_norm))
+            final_images = np.rollaxis(np.array(final_images), 1, 0)
+            
+            best_idx = np.argmin(results[mode]['test_loss'][:, :, -1], axis=1)
+
+            for target_idx, target in enumerate(targets):
+                fig, ax = plt.subplots(2, 5, figsize=(10, 5))
+                fig.suptitle(f"Patches at optimal positions, mode: {mode}, target {target}")
+                img_idx = 0
+                for row in range(2):
+                    for column in range(5):
+                        ax[row, column].imshow(final_images[target_idx, img_idx], cmap='gray')
+                        if img_idx == best_idx[target_idx]:
+                            ax[row, column].set_title(f"run {img_idx}, best")
+                        else:
+                            ax[row, column].set_title(f"run {img_idx}")
+                        img_idx +=1
+                pdf.savefig(fig)
+                plt.close()
+                
 
 
 
