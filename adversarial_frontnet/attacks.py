@@ -293,6 +293,9 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
 def calc_eval_loss(dataset, patch, transformation_matrix, model, target):
     actual_loss = torch.tensor(0.).to(patch.device)
 
+    mask = torch.isnan(target)
+    target = torch.where(mask, 0., target)
+
     for _, data in enumerate(dataset):
         batch, _ = data
         batch = batch.to(patch.device) / 255. # limit images to range [0-1]
@@ -304,12 +307,13 @@ def calc_eval_loss(dataset, patch, transformation_matrix, model, target):
         x, y, z, phi = model(mod_img)
 
         # prepare shapes for MSE loss
-        target_batch = target.repeat(len(batch), 1)
+        # target_batch = target.repeat(len(batch), 1)
         pred = torch.stack([x, y, z])
         pred = pred.squeeze(2).mT
 
         # only target x,y and z which are previously chosen, otherwise keep x/y/z to prediction
-        target_batch = torch.where(torch.isnan(target_batch), pred, target_batch)
+        #target_batch = torch.where(torch.isnan(target_batch), pred, target_batch)
+        target_batch = (pred * mask) + target
         
         loss = mse_loss(target_batch, pred)
         actual_loss += loss.clone().detach()
