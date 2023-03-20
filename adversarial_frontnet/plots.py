@@ -13,6 +13,8 @@ from util import load_dataset
 from patch_placement import place_patch
 from attacks import get_transformation
 
+from collections import defaultdict
+
 def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, img_idx=0):
     dataset_path = 'pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle'
     train_set = load_dataset(path=dataset_path, batch_size=1, shuffle=True, drop_last=False, num_workers=0)
@@ -197,6 +199,95 @@ def plot_results(path):
             pdf.savefig(fig)
             plt.close()
 
+def combine_arrays(paths, name):
+    arr = []
+    for path in paths:
+        file = path / name
+        # print(file)
+        if file.exists():
+            arr.append(np.load(file))
+    return np.array(arr)
+
+def gen_dict(paths):
+    gen_dict = {
+        'patches': combine_arrays(paths, 'patches.npy'),
+        'patch_loss': combine_arrays(paths, 'patch_losses.npy'),
+        'pos_loss': combine_arrays(paths, 'position_losses.npy'),
+        'train_loss': np.rollaxis(combine_arrays(paths, 'losses_train.npy'), 2, 0),
+        'test_loss': np.rollaxis(combine_arrays(paths, 'losses_test.npy'), 2, 0),
+        'boxplot_data': np.rollaxis(combine_arrays(paths, 'boxplot_data.npy'), 1, 0)
+    }
+    return gen_dict
+
+def plot_single(data, title, xlabel='iterations', ylabel='MSE', mean=True, legend=True):
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(data, color='lightsteelblue')
+    if mean:
+        ax.plot(np.mean(data, axis=1), label='mean', color='darkorange')
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    if legend:
+        ax.legend()
+    return fig
+
+def plot_multi(multi_data, title, labels, colors, xlabel='iterations', ylabel='MSE', mean=True, legend=True):
+    fig, ax = plt.subplots(1, 1)
+    for data, label, color in zip(multi_data, labels, colors):
+        ax.plot(data, color=color)
+        if mean:
+            ax.plot(np.mean(data, axis=1), label='mean '+ label)
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    if legend:
+        ax.legend()
+
+    return fig
+
+def gen_boxplots(data, title, labels, ylabel='MSE'):
+    fig, ax = plt.subplots(1, 1)
+    ax.boxplot(data, 1, 'D', labels=labels)
+    ax.set_title(title)
+    ax.set_ylabel(ylabel)
+    return fig
+
+def eval_multi_run(path):
+    path = Path(path)
+
+    modes = ['fixed', 'joint', 'split', 'hybrid']
+
+    results = defaultdict(list)
+    for mode in modes:
+        paths = sorted([p for p in path.glob(f"{mode}*")])
+        results[mode] = gen_dict(paths)
+
+    with open(paths[0] / 'settings.yaml') as f:
+        settings = yaml.load(f, Loader=yaml.FullLoader)
+        
+    runs = len(paths)
+
+    targets = [values for _, values in settings['targets'].items()]
+    targets = np.array(targets, dtype=float).T
+
+
+    with PdfPages(Path(path) / 'combined_result.pdf') as pdf:
+        for mode, result in zip(modes, results):
+            patch_losses = plot_single(results[mode]['patch_loss'].T, title=f'Patch loss, mode: {mode}, runs: {runs}')
+            pdf.savefig(patch_losses)
+            plt.close()
+
+            for i, target in enumerate(targets):
+                train_test_loss = plot_multi([results[mode]['train_loss'][i].T, results[mode]['test_loss'][i].T], title=f"Evaluation loss after each iteration, mode: {mode}, runs: {runs}, target: {target}", labels=['train loss', 'test loss'], colors=['lightsteelblue', 'peachpuff'])
+                pdf.savefig(train_test_loss)
+                plt.close()
+
+                boxplot_mean = np.mean(results[mode]['boxplot_data'][i], axis=0)
+                boxplot = gen_boxplots(boxplot_mean.T, title=f'Patches placed at optimal position, mode: {mode}, runs: {runs}, target: {target}', labels=['base images', 'starting patch', 'optimized patch'], ylabel='mean MSE')
+                pdf.savefig(boxplot)
+                pdf.close
+        
+
 
 
 
@@ -204,7 +295,8 @@ if __name__=="__main__":
     import sys
 
     path = sys.argv[1]
-    plot_results(path)
+    #plot_results(path)
+    eval_multi_run(path)
 
 
 
