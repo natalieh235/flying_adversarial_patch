@@ -86,14 +86,16 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                     # all_l2 = torch.sqrt(((y-target)**2)) 
                     # target_losses.append(torch.mean(all_l2))
                     # prepare shapes for MSE loss
-                    target_batch = target.repeat(len(batch), 1)
+                    # target_batch = target.repeat(len(batch), 1)
                     # TODO: improve readbility!
                     pred = torch.stack([x, y, z])
                     pred = pred.squeeze(2).mT
 
                      # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
-                    target_batch = torch.where(torch.isnan(target_batch), pred, target_batch)
-                    
+                    mask = torch.isnan(target)
+                    target = torch.where(mask, 0., target) #torch.where(torch.isnan(target_batch), pred, target_batch)
+                    target_batch = (pred * mask) + target
+
                     target_losses.append(mse_loss(target_batch, pred))
 
 
@@ -166,13 +168,16 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
 
                     # calculate mean l2 losses (target, y) for all images in batch
                     # prepare shapes for MSE loss
-                    target_batch = target.repeat(len(batch), 1)
+                    #target_batch = target.repeat(len(batch), 1)
                     # TODO: improve readbility!
                     pred = torch.stack([x, y, z])
                     pred = pred.squeeze(2).mT
 
                     # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
-                    target_batch = torch.where(torch.isnan(target_batch), pred, target_batch)
+                    #torch.where(torch.isnan(target_batch), pred, target_batch)
+                    mask = torch.isnan(target)
+                    target = torch.where(mask, 0., target)
+                    target_batch = (pred * mask) + target
                     
                     target_losses.append(mse_loss(target_batch, pred))
                 
@@ -232,6 +237,9 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
             #     best_scaling = scaling_factor.clone().detach()
             
             opt = torch.optim.Adam([scaling_factor, tx, ty], lr=lr)
+
+            mask = torch.isnan(target)
+            target = torch.where(mask, 0., target)
             
             for epoch in range(epochs):
 
@@ -253,14 +261,15 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
 
                     # calculate mean l2 losses (target, prediction) for all images in batch
                     # prepare shapes for MSE loss
-                    target_batch = target.repeat(len(batch), 1)
+                    # target_batch = target.repeat(len(batch), 1)
                     # TODO: improve readbility!
                     pred = torch.stack([x, y, z])
                     pred = pred.squeeze(2).mT
 
                     # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
-                    target_batch = torch.where(torch.isnan(target_batch), pred, target_batch)
-                    
+                    #torch.where(torch.isnan(target_batch), pred, target_batch)
+                    target_batch = (pred * mask) + target
+
                     loss = mse_loss(target_batch, pred)
 
                     actual_loss += loss.clone().detach()
