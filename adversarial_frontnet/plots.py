@@ -241,8 +241,33 @@ def plot_multi(multi_data, title, labels, colors, xlabel='iterations', ylabel='M
 
     return fig
 
+def show_multi_placed(result, targets, mode):
+    final_images = []
+    for run_idx, position in enumerate(result['positions']):
+        scale_norm, tx_norm, ty_norm = position[:, -1, :]
+        last_patch = result['patches'][run_idx][-1]
+        final_images.append(img_placed_patch(targets, last_patch, scale_norm, tx_norm, ty_norm))
+    final_images = np.rollaxis(np.array(final_images), 1, 0)
+    
+    best_idx = np.argmin(result['test_loss'][:, :, -1], axis=1)
+
+    for target_idx, target in enumerate(targets):
+        fig, ax = plt.subplots(2, 5, figsize=(15, 5))
+        fig.suptitle(f"Patches at optimal positions, mode: {mode}, target {target}")
+        img_idx = 0
+        for row in range(2):
+            for column in range(5):
+                ax[row, column].imshow(final_images[target_idx, img_idx], cmap='gray')
+                if img_idx == best_idx[target_idx]:
+                    ax[row, column].set_title(f"run {img_idx}, best")
+                else:
+                    ax[row, column].set_title(f"run {img_idx}")
+                img_idx +=1
+    return fig
+
+
 def gen_boxplots(data, title, labels, ylabel='MSE'):
-    fig, ax = plt.subplots(1, 1)
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
     ax.boxplot(data, 1, 'D', labels=labels)
     ax.set_title(title)
     ax.set_ylabel(ylabel)
@@ -269,12 +294,18 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
         print(mode, "mean", np.mean(all), "std", np.std(all))
 
     with PdfPages(Path(path) / 'combined_result.pdf') as pdf:
+        
+        boxplot_means = [] 
+
         for mode in modes:
+            boxplot_mean = []
+
             patch_losses = plot_single(results[mode]['patch_loss'].T, title=f'Patch loss, mode: {mode}, runs: {runs}')
             pdf.savefig(patch_losses)
             plt.close()
 
             for i, target in enumerate(targets):
+                
                 if mode == 'split' or mode == 'hybrid':
                     pos_losses = plot_single(results[mode]['pos_loss'].T[i], title=f'Position loss, mode: {mode}, runs: {runs}, target: {target}')
                     pdf.savefig(pos_losses)
@@ -284,37 +315,25 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
                 train_test_loss = plot_multi([results[mode]['train_loss'][i].T, results[mode]['test_loss'][i].T], title=f"Evaluation loss after each iteration, mode: {mode}, runs: {runs}, target: {target}", labels=['train loss', 'test loss'], colors=['lightsteelblue', 'peachpuff'])
                 pdf.savefig(train_test_loss)
                 plt.close()
-
-                boxplot_mean = np.mean(results[mode]['boxplot_data'][i], axis=0)
-                boxplot = gen_boxplots(boxplot_mean.T, title=f'Patches placed at optimal position, mode: {mode}, runs: {runs}, target: {target}', labels=['base images', 'starting patch', 'optimized patch'], ylabel='mean MSE')
-                pdf.savefig(boxplot)
-                pdf.close
-
-            final_images = []
-            for run_idx, position in enumerate(results[mode]['positions']):
-                scale_norm, tx_norm, ty_norm = position[:, -1, :]
-                last_patch = results[mode]['patches'][run_idx][-1]
-                final_images.append(img_placed_patch(targets, last_patch, scale_norm, tx_norm, ty_norm))
-            final_images = np.rollaxis(np.array(final_images), 1, 0)
-            
-            best_idx = np.argmin(results[mode]['test_loss'][:, :, -1], axis=1)
-
-            for target_idx, target in enumerate(targets):
-                fig, ax = plt.subplots(2, 5, figsize=(15, 5))
-                fig.suptitle(f"Patches at optimal positions, mode: {mode}, target {target}")
-                img_idx = 0
-                for row in range(2):
-                    for column in range(5):
-                        ax[row, column].imshow(final_images[target_idx, img_idx], cmap='gray')
-                        if img_idx == best_idx[target_idx]:
-                            ax[row, column].set_title(f"run {img_idx}, best")
-                        else:
-                            ax[row, column].set_title(f"run {img_idx}")
-                        img_idx +=1
-                pdf.savefig(fig)
-                plt.close()
                 
+                boxplot_mean.append(np.mean(results[mode]['boxplot_data'][i], axis=0))
+        
+            boxplot_means.append(boxplot_mean)
 
+            # --- place patches at optimal position 
+            fig = show_multi_placed(results[mode], targets, mode)
+            pdf.savefig(fig)
+            plt.close()  
+        
+        # --- create box plots
+        boxplot_means = np.rollaxis(np.array(boxplot_means), 1, 0)
+        for target, means in zip(targets, boxplot_means):
+            base_img_mean = np.mean(means[:, 0, :], axis=0)
+            base_patch_mean = np.mean(means[:, 1, :], axis=0)
+
+            boxplot = gen_boxplots([base_img_mean, base_patch_mean, *means[:, 2]], title=f'MSE for each test image, taregt: {target}, runs {runs}', labels=['base images', 'starting patch', *modes], ylabel='mean MSE')
+            pdf.savefig(boxplot)
+            pdf.close
 
 
 if __name__=="__main__":
@@ -324,9 +343,6 @@ if __name__=="__main__":
     parser.add_argument('--path', default='eval/')
     parser.add_argument('--modes', nargs='+', default=['fixed', 'joint', 'split', 'hybrid'])
     args = parser.parse_args()
-
-    print(args)
-    print(args.modes)
 
     if args.final:
         eval_multi_run(args.path, args.modes)
