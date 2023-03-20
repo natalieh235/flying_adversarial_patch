@@ -8,6 +8,38 @@ import numpy as np
 
 import yaml
 
+import torch
+from util import load_dataset
+from patch_placement import place_patch
+from attacks import get_transformation
+
+def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, img_idx=0):
+    dataset_path = 'pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle'
+    train_set = load_dataset(path=dataset_path, batch_size=1, shuffle=True, drop_last=False, num_workers=0)
+
+    base_img, ground_truth = train_set.dataset.__getitem__(img_idx)
+    base_img = base_img.unsqueeze(0) / 255.
+    # print(base_img.shape)
+
+    patch = torch.from_numpy(patch).unsqueeze(0).unsqueeze(0) 
+    # print(patch.shape)
+
+    scale_norm = torch.tensor(scale_norm)
+    tx_norm = torch.tensor(tx_norm)
+    ty_norm = torch.tensor(ty_norm)
+    # print(scale_norm.shape)
+
+
+    final_images = []
+    for target_idx in range(len(targets)):
+        transformation_matrix = get_transformation(scale_norm[target_idx], tx_norm[target_idx], ty_norm[target_idx])
+        print(transformation_matrix)
+        
+        final_images.append(place_patch(base_img, patch, transformation_matrix).numpy()[0][0])
+
+    return np.array(final_images)
+
+
 def plot_results(path):
     # TODO: read targets from config!
 
@@ -46,6 +78,8 @@ def plot_results(path):
     boxplot_data = np.rollaxis(boxplot_data, 2, 1)
     # print(boxplot_data.shape)
 
+    img_w_patch = img_placed_patch(targets, optimization_patches[-1], scale_norm=all_sf[-1], tx_norm=all_tx[-1], ty_norm=all_ty[-1])
+    #print(img_w_patch.shape)
 
     with PdfPages(Path(path) / 'result.pdf') as pdf:
         for idx, patch in enumerate(optimization_patches):
@@ -156,6 +190,14 @@ def plot_results(path):
             pdf.savefig(fig)
             plt.close(fig)
 
+        for target_idx, target in enumerate(targets):
+            fig, ax = plt.subplots(1,1)
+            ax.imshow(img_w_patch[target_idx], cmap='gray')
+            ax.set_title(f'Placed patch after optimization, target {target}')
+            pdf.savefig(fig)
+            plt.close()
+
+
 
 
 if __name__=="__main__":
@@ -175,15 +217,6 @@ if __name__=="__main__":
 #     ax.plot(all_ty[idx].cpu())
 #     ax.set_xlabel('training steps')
 #     ax.set_ylabel('ty')
-#     pdf.savefig(fig)
-#     plt.close(fig)
-
-# for target_idx, target in enumerate(targets):
-#     fig = plt.figure()
-#     ax = fig.add_subplot(111)
-#     ax.set_title(f'Placed patch after optimization, target {target.cpu().item()}')
-#     ax.imshow(final_images[target_idx][0][0].detach().cpu().numpy(), cmap='gray')
-#     plt.axis('off')
 #     pdf.savefig(fig)
 #     plt.close(fig)
 
