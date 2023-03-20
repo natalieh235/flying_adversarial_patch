@@ -21,15 +21,12 @@ def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, img_idx=0):
 
     base_img, ground_truth = train_set.dataset.__getitem__(img_idx)
     base_img = base_img.unsqueeze(0) / 255.
-    # print(base_img.shape)
 
     patch = torch.from_numpy(patch).unsqueeze(0).unsqueeze(0) 
-    # print(patch.shape)
 
     scale_norm = torch.tensor(scale_norm)
     tx_norm = torch.tensor(tx_norm)
     ty_norm = torch.tensor(ty_norm)
-    # print(scale_norm.shape)
 
 
     final_images = []
@@ -42,7 +39,6 @@ def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, img_idx=0):
 
 
 def plot_results(path):
-    # TODO: read targets from config!
 
     path = Path(path)
     with open('settings.yaml') as f:
@@ -252,10 +248,8 @@ def gen_boxplots(data, title, labels, ylabel='MSE'):
     ax.set_ylabel(ylabel)
     return fig
 
-def eval_multi_run(path):
+def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
     path = Path(path)
-
-    modes = ['fixed', 'joint', 'split', 'hybrid']
 
     results = defaultdict(list)
     for mode in modes:
@@ -275,12 +269,18 @@ def eval_multi_run(path):
         print(mode, "mean", np.mean(all), "std", np.std(all))
 
     with PdfPages(Path(path) / 'combined_result.pdf') as pdf:
-        for mode, result in zip(modes, results):
+        for mode in modes:
             patch_losses = plot_single(results[mode]['patch_loss'].T, title=f'Patch loss, mode: {mode}, runs: {runs}')
             pdf.savefig(patch_losses)
             plt.close()
 
             for i, target in enumerate(targets):
+                if mode == 'split' or mode == 'hybrid':
+                    pos_losses = plot_single(results[mode]['pos_loss'].T[i], title=f'Position loss, mode: {mode}, runs: {runs}, target: {target}')
+                    pdf.savefig(pos_losses)
+                    plt.close()
+
+
                 train_test_loss = plot_multi([results[mode]['train_loss'][i].T, results[mode]['test_loss'][i].T], title=f"Evaluation loss after each iteration, mode: {mode}, runs: {runs}, target: {target}", labels=['train loss', 'test loss'], colors=['lightsteelblue', 'peachpuff'])
                 pdf.savefig(train_test_loss)
                 plt.close()
@@ -300,7 +300,7 @@ def eval_multi_run(path):
             best_idx = np.argmin(results[mode]['test_loss'][:, :, -1], axis=1)
 
             for target_idx, target in enumerate(targets):
-                fig, ax = plt.subplots(2, 5, figsize=(10, 5))
+                fig, ax = plt.subplots(2, 5, figsize=(15, 5))
                 fig.suptitle(f"Patches at optimal positions, mode: {mode}, target {target}")
                 img_idx = 0
                 for row in range(2):
@@ -318,37 +318,17 @@ def eval_multi_run(path):
 
 
 if __name__=="__main__":
-    import sys
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--final', action='store_true')
+    parser.add_argument('--path', default='eval/')
+    parser.add_argument('--modes', nargs='+', default=['fixed', 'joint', 'split', 'hybrid'])
+    args = parser.parse_args()
 
-    path = sys.argv[1]
-    #plot_results(path)
-    eval_multi_run(path)
+    print(args)
+    print(args.modes)
 
-
-
-
-### depracated
-# for idx in range(len(all_ty)):
-#     fig = plt.figure()
-#     ax = fig.add_subplot(111)
-#     ax.set_title(f'ty, iteration {idx}')
-#     ax.plot(all_ty[idx].cpu())
-#     ax.set_xlabel('training steps')
-#     ax.set_ylabel('ty')
-#     pdf.savefig(fig)
-#     plt.close(fig)
-
-# fig = plot_saliency(base_img, ground_truth, model)
-# fig.suptitle(f'y = {prediction[1].detach().cpu().item()}')
-# pdf.savefig(fig)
-# plt.close(fig)
-
-# fig = plot_saliency(mod_start, ground_truth, model)
-# fig.suptitle(f'y = {prediction_start[1].detach().cpu().item()}')
-# pdf.savefig(fig)
-# plt.close(fig)
-
-# fig = plot_saliency(mod_img, ground_truth, model)
-# fig.suptitle(f'y = {prediction_mod[1].detach().cpu().item()}')
-# pdf.savefig(fig)
-# plt.close(fig)
+    if args.final:
+        eval_multi_run(args.path, args.modes)
+    else:
+        plot_results(args.path)
