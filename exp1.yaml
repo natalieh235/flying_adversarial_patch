@@ -1,6 +1,6 @@
 path: "eval/exp1"
 # +x is distance
-# +y is right
+# +y is left
 # +z is top
 targets:
   x : [1.0, 1.0]

@@ -1,5 +1,8 @@
 path: "eval/debug/settings_test/"
 targets:
+# +x is distance
+# +y is left
+# +z is top
   x : [1.0, 0.5]
   y : [-2, null]
   z : [null, null]
