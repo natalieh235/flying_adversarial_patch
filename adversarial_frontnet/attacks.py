@@ -46,10 +46,6 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
 
     patch_t = patch.clone().requires_grad_(True)
     positions_t = positions.clone().requires_grad_(True)
-    # num_target = len(targets)
-    # tx = torch.FloatTensor(num_target, 1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
-    # ty = torch.FloatTensor(num_target,1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
-    # scaling_factor = torch.FloatTensor(num_target,1).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
 
     opt = torch.optim.Adam([patch_t, positions_t], lr=lr)
 
@@ -97,9 +93,6 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                     target_batch = (pred * mask) + target
 
                     target_losses.append(mse_loss(target_batch, pred))
-
-
-
 
                 loss = torch.sum(torch.stack(target_losses))
                 actual_loss += loss.clone().detach()
@@ -416,7 +409,6 @@ if __name__=="__main__":
         elif mode == "joint" or mode == "hybrid":
             patch, loss_patch, positions = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
             optimization_pos_vectors.append(positions)
-            print(optimization_pos_vectors[-1])
 
             pos_losses.append(loss_patch)
 

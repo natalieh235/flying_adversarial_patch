@@ -41,7 +41,7 @@ def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, img_idx=0):
 def plot_results(path):
 
     path = Path(path)
-    with open('settings.yaml') as f:
+    with open(path / 'settings.yaml') as f:
         settings = yaml.load(f, Loader=yaml.FullLoader)
 
     targets = [values for _, values in settings['targets'].items()]
