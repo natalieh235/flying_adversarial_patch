@@ -4,6 +4,12 @@ from pathlib import Path
 import numpy as np
 import exp
 
+# plotting
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+
 
 class Experiment2:
     def create_settings(self, base_settings, trials):
@@ -27,9 +33,42 @@ class Experiment2:
             print(len(settings['targets']['x']), np.mean(test_losses[-1]))
             result[len(settings['targets']['x'])].append(test_losses[-1])
 
+        xs = []
+        ys = []
+        yerr = []
         for k, v in result.items():
             all = np.stack(v)
-            print(k, "mean", np.mean(all), "std", np.std(all))
+            print(k, "mean", np.mean(all), "std")
+            xs.append(k)
+
+            # loss_per_run = np.mean(all, axis=1)
+            ys.append(np.mean(all))
+            yerr.append(np.std(all))
+
+        # change settings to match latex
+        plt.rcParams.update({
+            "text.usetex": True,
+            "font.family": "sans-serif",
+            "font.sans-serif": "Helvetica",
+            "font.size": 12,
+            "figure.figsize": (6, 4),
+        })
+
+        with PdfPages(p.parent / 'exp2.pdf') as pdf:
+            fig, ax = plt.subplots(constrained_layout=True)
+
+            ax.plot(xs, ys)
+            ax.fill_between(xs, np.asarray(ys)+np.asarray(yerr), np.asarray(ys)-np.asarray(yerr), alpha=0.3)
+
+            ax.set_ylabel('Test Loss per Target [m]')
+            ax.set_xlabel('Number of Targets per Patch')
+            # ax.set_ylim(0,0.2)
+
+            # ax.bar(xs, ys)
+            # ax.errorbar(xs, ys, yerr)
+
+            pdf.savefig(fig)
+            plt.close()
 
 def main():
     e = Experiment2()
