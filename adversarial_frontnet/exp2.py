@@ -1,69 +1,78 @@
-import yaml
-from multiprocessing import Pool
-import argparse
 import copy
-import tempfile
-from pathlib import Path
-import subprocess
-import signal
-import os
-import numpy as np
 from collections import defaultdict
+from pathlib import Path
+import numpy as np
+import exp
 
-def run_attack(settings):
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        filename = Path(tmpdirname) / 'settings.yaml'
-        with open(filename, 'w') as f:
-            yaml.dump(settings, f)
+# plotting
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
-        subprocess.run(["python3", "adversarial_frontnet/attacks.py", "--file", filename])
 
-def on_sigterm():
-    # kill the whole process group
-    os.killpg(os.getpid(), signal.SIGTERM)
+class Experiment2:
+    def create_settings(self, base_settings, trials):
+        all_settings = []
+        for i in range(trials):
+            for j in range(1, len(base_settings['targets']['x'])+1):
+                s = copy.deepcopy(base_settings)
+                s['targets']['x'] = base_settings['targets']['x'][0:j]
+                s['targets']['y'] = base_settings['targets']['y'][0:j]
+                s['targets']['z'] = base_settings['targets']['z'][0:j]
+                s['path'] = "eval/exp2/" + str(j) + "_" + str(i)
+                all_settings.append(s)
+        return all_settings
+
+    def stats(self, all_settings):
+        # output statistics
+        result = defaultdict(list)
+        for settings in all_settings:
+            p = Path(settings['path'])
+            test_losses = np.load(p / 'losses_test.npy')
+            print(len(settings['targets']['x']), np.mean(test_losses[-1]))
+            result[len(settings['targets']['x'])].append(test_losses[-1])
+
+        xs = []
+        ys = []
+        yerr = []
+        for k, v in result.items():
+            all = np.stack(v)
+            print(k, "mean", np.mean(all), "std")
+            xs.append(k)
+
+            # loss_per_run = np.mean(all, axis=1)
+            ys.append(np.mean(all))
+            yerr.append(np.std(all))
+
+        # change settings to match latex
+        plt.rcParams.update({
+            "text.usetex": True,
+            "font.family": "sans-serif",
+            "font.sans-serif": "Helvetica",
+            "font.size": 12,
+            "figure.figsize": (6, 4),
+        })
+
+        with PdfPages(p.parent / 'exp2.pdf') as pdf:
+            fig, ax = plt.subplots(constrained_layout=True)
+
+            ax.plot(xs, ys)
+            ax.fill_between(xs, np.asarray(ys)+np.asarray(yerr), np.asarray(ys)-np.asarray(yerr), alpha=0.3)
+
+            ax.set_ylabel('Test Loss per Target [m]')
+            ax.set_xlabel('Number of Targets per Patch')
+            # ax.set_ylim(0,0.2)
+
+            # ax.bar(xs, ys)
+            # ax.errorbar(xs, ys, yerr)
+
+            pdf.savefig(fig)
+            plt.close()
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--file', default='exp2.yaml')
-    parser.add_argument('--norun', action='store_true')
-    parser.add_argument('-j', type=int, default=4)
-    parser.add_argument('--trials', type=int, default=10)
-    args = parser.parse_args()
-
-    signal.signal(signal.SIGTERM, on_sigterm)
-
-    # SETTINGS
-    with open(args.file) as f:
-        base_settings = yaml.load(f, Loader=yaml.FullLoader)
-
-    # create possible settings
-    all_settings = []
-    for i in range(args.trials):
-        for j in range(1, len(base_settings['targets']['x'])+1):
-            s = copy.deepcopy(base_settings)
-            s['targets']['x'] = base_settings['targets']['x'][0:j]
-            s['targets']['y'] = base_settings['targets']['y'][0:j]
-            s['targets']['z'] = base_settings['targets']['z'][0:j]
-            s['path'] = "eval/exp2/" + str(j) + "_" + str(i)
-            all_settings.append(s)
-
-    if not args.norun:
-        # start 4 worker processes
-        with Pool(processes=args.j) as pool:
-            for i in pool.imap_unordered(run_attack, all_settings):
-                pass
-
-    # output statistics
-    result = defaultdict(list)
-    for settings in all_settings:
-        p = Path(settings['path'])
-        test_losses = np.load(p / 'losses_test.npy')
-        print(len(settings['targets']['x']), np.mean(test_losses[-1]))
-        result[len(settings['targets']['x'])].append(test_losses[-1])
-
-    for k, v in result.items():
-        all = np.stack(v)
-        print(k, "mean", np.mean(all), "std", np.std(all))
+    e = Experiment2()
+    exp.exp(e)
 
 
 if __name__ == '__main__':
