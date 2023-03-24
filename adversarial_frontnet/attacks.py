@@ -369,10 +369,10 @@ if __name__=="__main__":
     patch_start.clamp_(0., 1.)
 
     # or start with a random patch
-    # patch_start = torch.rand(1, 1, 200, 200).to(device) * 255.
+    # patch_start = torch.rand(1, 1, 300, 320).to(device)
 
     # or start from a white patch
-    # patch_start = torch.ones(1, 1, 200, 200).to(device) * 255.
+    # patch_start = torch.ones(1, 1, 300, 320).to(device)
 
     optimization_pos_losses = []
     optimization_pos_vectors = []
@@ -526,28 +526,5 @@ if __name__=="__main__":
 
     np.save(path / 'boxplot_data.npy', torch.stack(boxplot_data).cpu().numpy())
 
-    # # create result pdf
-    # # get one image and ground-truth pose  
-    # base_img, ground_truth = train_set.dataset.__getitem__(0)
-    # base_img = base_img.unsqueeze(0).to(device)
-    # ground_truth = ground_truth.to(device)
-
-    # # get prediction for unaltered base image
-    # prediction = torch.stack(model(base_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
-
-    # # place the initial, unaltered patch in base image at the optimal position and get prediction
-    # # mod_start = place_patch(base_img, patch_start, transformation_matrix)
-    # # prediction_start = torch.stack(model(mod_start)).permute(1, 0, 2).squeeze(2).squeeze(0)
-
-    # # place the optimized patch in the image at the optimal position and get prediction
-    # final_images = []
-    # for target_idx in range(len(targets)):
-    #     scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx])
-    #     transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
-        
-    #     final_images.append(place_patch(base_img, patch, transformation_matrix))
-    # #prediction_mod = torch.stack(model(mod_img)).permute(1, 0, 2).squeeze(2).squeeze(0)
-
-    from plots import plot_results
-    # TODO: add "final_images" to plots
-    plot_results(path)
+    # from plots import plot_results
+    # plot_results(path)

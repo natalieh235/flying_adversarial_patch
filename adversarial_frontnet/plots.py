@@ -249,20 +249,27 @@ def show_multi_placed(result, targets, mode):
         final_images.append(img_placed_patch(targets, last_patch, scale_norm, tx_norm, ty_norm))
     final_images = np.rollaxis(np.array(final_images), 1, 0)
     
-    best_idx = np.argmin(result['test_loss'][:, :, -1], axis=1)
+    best_idx = np.argmin(np.mean(result['test_loss'][:, :, -1], axis=0))
+    print(best_idx)
 
-    for target_idx, target in enumerate(targets):
-        fig, ax = plt.subplots(2, 5, figsize=(15, 5))
-        fig.suptitle(f"Patches at optimal positions, mode: {mode}, target {target}")
-        img_idx = 0
-        for row in range(2):
-            for column in range(5):
-                ax[row, column].imshow(final_images[target_idx, img_idx], cmap='gray')
-                if img_idx == best_idx[target_idx]:
-                    ax[row, column].set_title(f"run {img_idx}, best")
-                else:
-                    ax[row, column].set_title(f"run {img_idx}")
-                img_idx +=1
+    # print(final_images.shape)
+    # print(final_images[0][0].shape)
+    #figures = []
+    #for target_idx, target in enumerate(targets):
+    fig, ax = plt.subplots(2, 1)
+    #fig.suptitle(f"Patches at optimal positions, mode: {mode}, target {target}")
+    img_idx = 0
+    for row in range(2):
+        #for column in range(5):
+        ax[row].imshow(final_images[row, best_idx], cmap='gray')
+        ax[row].set_title(f'target prediction: x={targets[row][0]}, y={targets[row][1]}, z={targets[row][2]}')
+        ax[row].axis('off')
+            #if img_idx == best_idx[target_idx]:
+                #ax[row, column].set_title(f"run {img_idx}, best")
+            #else:
+                #ax[row, column].set_title(f"run {img_idx}")
+            #img_idx +=1
+        #figures.append(fig)
     return fig
 
 
@@ -290,7 +297,8 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
     targets = np.array(targets, dtype=float).T
 
     for mode in modes:
-        all = results[mode]['test_loss']
+        all = results[mode]['test_loss'][:, :, -1]
+        print(all.shape)
         print(mode, "mean", np.mean(all), "std", np.std(all))
 
     with PdfPages(Path(path) / 'combined_result.pdf') as pdf:
@@ -322,17 +330,22 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
 
             # --- place patches at optimal position 
             fig = show_multi_placed(results[mode], targets, mode)
+            #for fig in figures:
             pdf.savefig(fig)
             plt.close()  
         
         # --- create box plots
         boxplot_means = np.rollaxis(np.array(boxplot_means), 1, 0)
+        print(boxplot_means.shape)
         for target, means in zip(targets, boxplot_means):
             base_img_mean = np.mean(means[:, 0, :], axis=0)
             base_patch_mean = np.mean(means[:, 1, :], axis=0)
 
-            boxplot = gen_boxplots([base_img_mean, base_patch_mean, *means[:, 2]], title=f'MSE for each test image, taregt: {target}, runs {runs}', labels=['base images', 'starting patch', *modes], ylabel='mean MSE')
-            pdf.savefig(boxplot)
+            #boxplot = gen_boxplots([base_img_mean, base_patch_mean, *means[:, 2]], title=f'MSE for each test image, taregt: {target}, runs {runs}', labels=['base images', 'starting patch', *modes], ylabel='mean MSE')
+            boxplots_base_start_fixed = gen_boxplots([base_img_mean, base_patch_mean, means[0, 2]], title=f'target: x = {target[0]}, y = {target[1]}, z={target[2]}', labels=['base images', 'starting patch', modes[0]], ylabel='Test loss [m]')
+            boxplots_joint_split_hybrid = gen_boxplots([*means[1:, 2]], title=f'target: x = {target[0]}, y = {target[1]}, z={target[2]}', labels=[*modes[1:]], ylabel='Test loss [m]')
+            pdf.savefig(boxplots_base_start_fixed)
+            pdf.savefig(boxplots_joint_split_hybrid)
             pdf.close
 
 
