@@ -13,4 +13,7 @@ num_pos_restarts: 20
 num_pos_epochs: 1
 num_patch_epochs: 1
 batch_size: 32
+patch: 
+  mode: 'face'  # face, white, random
+  path: 'misc/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
 mode: "joint"

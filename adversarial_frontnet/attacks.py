@@ -363,16 +363,18 @@ if __name__=="__main__":
 
 
     # load the patch from misc folder
-    # TODO: add the other custom face patches
-    patch_start = np.load("misc/custom_patch_resized.npy")
-    patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device) / 255.
-    patch_start.clamp_(0., 1.)
+    if settings['patch']['mode'] == 'face':
+        patch_start = np.load(settings['patch']['path'])
+        patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device) / 255.
+        patch_start.clamp_(0., 1.)
 
-    # or start with a random patch
-    # patch_start = torch.rand(1, 1, 300, 320).to(device)
+    # or start from a random patch
+    if settings['patch']['mode'] == 'random':
+        patch_start = torch.rand(1, 1, 300, 320).to(device)
 
     # or start from a white patch
-    # patch_start = torch.ones(1, 1, 300, 320).to(device)
+    if settings['patch']['mode'] == 'white':
+        patch_start = torch.ones(1, 1, 300, 320).to(device)
 
     optimization_pos_losses = []
     optimization_pos_vectors = []
@@ -526,5 +528,5 @@ if __name__=="__main__":
 
     np.save(path / 'boxplot_data.npy', torch.stack(boxplot_data).cpu().numpy())
 
-    # from plots import plot_results
-    # plot_results(path)
+    from plots import plot_results
+    plot_results(path)
