@@ -528,5 +528,5 @@ if __name__=="__main__":
 
     np.save(path / 'boxplot_data.npy', torch.stack(boxplot_data).cpu().numpy())
 
-    from plots import plot_results
-    plot_results(path)
+    # from plots import plot_results
+    # plot_results(path)

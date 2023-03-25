@@ -1,4 +1,4 @@
-path: "eval/exp1"
+path: "eval/exp3_face1/"
 # +x is distance
 # +y is left
 # +z is top
@@ -14,6 +14,6 @@ num_pos_epochs: 1
 num_patch_epochs: 1
 batch_size: 32
 patch: 
-  mode: 'face'  # face, white, random
+  mode: 'white'  # face, white, random
   path: 'misc/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
-mode: "split" # fixed, split, joint, hybrid
+mode: "hybrid" # fixed, split, joint, hybrid
