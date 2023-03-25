@@ -216,7 +216,7 @@ def gen_dict(paths):
     return gen_dict
 
 def plot_single(data, title, xlabel='iterations', ylabel='MSE', mean=True, legend=True):
-    fig, ax = plt.subplots(1, 1)
+    fig, ax = plt.subplots(1, 1, constrained_layout=True)
     ax.plot(data, color='lightsteelblue')
     if mean:
         ax.plot(np.mean(data, axis=1), label='mean', color='darkorange')
@@ -228,7 +228,7 @@ def plot_single(data, title, xlabel='iterations', ylabel='MSE', mean=True, legen
     return fig
 
 def plot_multi(multi_data, title, labels, colors, xlabel='iterations', ylabel='MSE', mean=True, legend=True):
-    fig, ax = plt.subplots(1, 1)
+    fig, ax = plt.subplots(1, 1, constrained_layout=True)
     for data, label, color in zip(multi_data, labels, colors):
         ax.plot(data, color=color)
         if mean:
@@ -250,13 +250,13 @@ def show_multi_placed(result, targets, mode):
     final_images = np.rollaxis(np.array(final_images), 1, 0)
     
     best_idx = np.argmin(np.mean(result['test_loss'][:, :, -1], axis=0))
-    print(best_idx)
+    # print(best_idx)
 
     # print(final_images.shape)
     # print(final_images[0][0].shape)
     #figures = []
     #for target_idx, target in enumerate(targets):
-    fig, ax = plt.subplots(2, 1)
+    fig, ax = plt.subplots(2, 1, constrained_layout=True)
     #fig.suptitle(f"Patches at optimal positions, mode: {mode}, target {target}")
     img_idx = 0
     for row in range(2):
@@ -274,7 +274,7 @@ def show_multi_placed(result, targets, mode):
 
 
 def gen_boxplots(data, title, labels, ylabel='MSE'):
-    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+    fig, ax = plt.subplots(1, 1, constrained_layout=True)
     ax.boxplot(data, 1, 'D', labels=labels)
     ax.set_title(title)
     ax.set_ylabel(ylabel)
@@ -298,7 +298,6 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
 
     for mode in modes:
         all = results[mode]['test_loss'][:, :, -1]
-        print(all.shape)
         print(mode, "mean", np.mean(all), "std", np.std(all))
 
     with PdfPages(Path(path) / 'combined_result.pdf') as pdf:
@@ -337,16 +336,32 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
         # --- create box plots
         boxplot_means = np.rollaxis(np.array(boxplot_means), 1, 0)
         print(boxplot_means.shape)
-        for target, means in zip(targets, boxplot_means):
-            base_img_mean = np.mean(means[:, 0, :], axis=0)
-            base_patch_mean = np.mean(means[:, 1, :], axis=0)
+        # (2, 4, 3, 403) (targets, modes, [base, start, mode], loss vals)
+        base_img_mean = np.mean(boxplot_means[:, 3, 0, :], axis=0)
+        print(base_img_mean.shape)
+        base_patch_mean = np.mean(boxplot_means[:, 3, 1, :], axis=0)
+        best_mean = np.mean(boxplot_means[:, 3, 2, :], axis=0)
+        boxplot_base_start_best = gen_boxplots([base_img_mean, base_patch_mean, best_mean], title="", labels=['base image', 'starting patch', modes[3]], ylabel='Test loss [m]')
+        pdf.savefig(boxplot_base_start_best)
+        plt.close()
 
-            #boxplot = gen_boxplots([base_img_mean, base_patch_mean, *means[:, 2]], title=f'MSE for each test image, taregt: {target}, runs {runs}', labels=['base images', 'starting patch', *modes], ylabel='mean MSE')
-            boxplots_base_start_fixed = gen_boxplots([base_img_mean, base_patch_mean, means[0, 2]], title=f'target: x = {target[0]}, y = {target[1]}, z={target[2]}', labels=['base images', 'starting patch', modes[0]], ylabel='Test loss [m]')
-            boxplots_joint_split_hybrid = gen_boxplots([*means[1:, 2]], title=f'target: x = {target[0]}, y = {target[1]}, z={target[2]}', labels=[*modes[1:]], ylabel='Test loss [m]')
-            pdf.savefig(boxplots_base_start_fixed)
-            pdf.savefig(boxplots_joint_split_hybrid)
-            pdf.close
+        boxplots_mode = [gen_boxplots([*boxplot_means[i, :, 2, :]], title="", labels=['fixed', 'joint', 'split', 'hybrid'], ylabel='Test loss [m]') for i in range(2)]
+        for boxplot in boxplots_mode:
+            pdf.savefig(boxplot)
+            plt.close()
+        # for target, means in zip(targets, boxplot_means):
+        #     base_img_mean = np.mean(means[:, 0, :], axis=0)
+        #     base_patch_mean = np.mean(means[:, 1, :], axis=0)
+        #     best_mean = np.mean(means[:, 4, :], axis=0)
+
+        #     #boxplot = gen_boxplots([base_img_mean, base_patch_mean, *means[:, 2]], title=f'MSE for each test image, taregt: {target}, runs {runs}', labels=['base images', 'starting patch', *modes], ylabel='mean MSE')
+        #     #boxplots_base_start_fixed = gen_boxplots([base_img_mean, base_patch_mean, means[0, 2]], title=f'target: x = {target[0]}, y = {target[1]}, z={target[2]}', labels=['base images', 'starting patch', modes[0]], ylabel='Test loss [m]')
+        #     #boxplots_joint_split_hybrid = gen_boxplots([*means[1:, 2]], title=f'target: x = {target[0]}, y = {target[1]}, z={target[2]}', labels=[*modes[1:]], ylabel='Test loss [m]')
+        #     boxplot_base_start_best = gen_boxplots([base_img_mean, base_patch_mean, best_mean], title="", labels=['base image', 'starting patch', 'hybrid'])
+        #     boxplots_two = gen_boxplots()
+        #     pdf.savefig(boxplots_base_start_fixed)
+        #     pdf.savefig(boxplots_joint_split_hybrid)
+        #     pdf.close
 
 
 if __name__=="__main__":
@@ -356,6 +371,15 @@ if __name__=="__main__":
     parser.add_argument('--path', default='eval/')
     parser.add_argument('--modes', nargs='+', default=['fixed', 'joint', 'split', 'hybrid'])
     args = parser.parse_args()
+
+    # change settings to match latex
+    plt.rcParams.update({
+            "text.usetex": True,
+            "font.family": "sans-serif",
+            "font.sans-serif": "Helvetica",
+            "font.size": 12,
+            "figure.figsize": (6, 4)
+    })
 
     if args.final:
         eval_multi_run(args.path, args.modes)
