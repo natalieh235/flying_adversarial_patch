@@ -273,11 +273,13 @@ def show_multi_placed(result, targets, mode):
     return fig
 
 
-def gen_boxplots(data, title, labels, ylabel='MSE'):
+def gen_boxplots(data, title, labels, ylabel='MSE', yrange=None):
     fig, ax = plt.subplots(1, 1, constrained_layout=True)
     ax.boxplot(data, 1, 'D', labels=labels)
     ax.set_title(title)
     ax.set_ylabel(ylabel)
+    if yrange is not None:
+        ax.set_ylim(yrange[0], yrange[1])
     return fig
 
 def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
@@ -340,15 +342,18 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
         base_img_mean = np.mean(boxplot_means[:, 3, 0, :], axis=0)
         print(base_img_mean.shape)
         base_patch_mean = np.mean(boxplot_means[:, 3, 1, :], axis=0)
+        fixed_mean = np.mean(boxplot_means[:, 0, 2, :], axis=0)
         best_mean = np.mean(boxplot_means[:, 3, 2, :], axis=0)
-        boxplot_base_start_best = gen_boxplots([base_img_mean, base_patch_mean, best_mean], title="", labels=['base image', 'starting patch', modes[3]], ylabel='Test loss [m]')
+        
+        boxplot_base_start_best = gen_boxplots([base_img_mean, base_patch_mean, fixed_mean, best_mean], title="", labels=['base image', 'starting patch', modes[0], modes[3]], ylabel='Test loss [m]')
         pdf.savefig(boxplot_base_start_best)
         plt.close()
 
-        boxplots_mode = [gen_boxplots([*boxplot_means[i, :, 2, :]], title="", labels=['fixed', 'joint', 'split', 'hybrid'], ylabel='Test loss [m]') for i in range(2)]
-        for boxplot in boxplots_mode:
-            pdf.savefig(boxplot)
-            plt.close()
+        boxplots_target_1 = gen_boxplots([*boxplot_means[0, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{1}$', yrange=[0.0, 0.3])
+        boxplots_target_2 = gen_boxplots([*boxplot_means[1, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{2}$', yrange=[0.0, 0.3])
+        pdf.savefig(boxplots_target_1)
+        pdf.savefig(boxplots_target_2)
+        plt.close()
         # for target, means in zip(targets, boxplot_means):
         #     base_img_mean = np.mean(means[:, 0, :], axis=0)
         #     base_patch_mean = np.mean(means[:, 1, :], axis=0)
@@ -378,7 +383,8 @@ if __name__=="__main__":
             "font.family": "sans-serif",
             "font.sans-serif": "Helvetica",
             "font.size": 12,
-            "figure.figsize": (6, 4)
+            "figure.figsize": (5, 2),
+            "mathtext.fontset": 'stix'
     })
 
     if args.final:

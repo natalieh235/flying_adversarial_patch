@@ -51,7 +51,7 @@ class Experiment2:
             "font.family": "sans-serif",
             "font.sans-serif": "Helvetica",
             "font.size": 12,
-            "figure.figsize": (6, 4),
+            "figure.figsize": (5, 2),
         })
 
         with PdfPages(p.parent / 'exp2.pdf') as pdf:

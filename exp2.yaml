@@ -1,11 +1,11 @@
-path: "eval/exp2"
+path: "eval/exp2/"
 # +x is distance
 # +y is left
 # +z is top
 targets:
-  x : [ 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
-  y : [-1.0, 1.0, 0.0, 0.0, -1.0, -1.0, 1.0, 1.0, 0.0]
-  z : [ 0.0, 0.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, 0.0]
+  x : [ 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
+  y : [ 0.0, -1.0, 1.0, 0.0, 0.0, -1.0, -1.0, 1.0, 1.0, 0.0]
+  z : [ 0.0, 0.0, 0.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, 0.0]
 lr_pos: 0.001
 lr_patch: 0.001
 num_hl_iter: 100
@@ -16,4 +16,4 @@ batch_size: 32
 patch: 
   mode: 'face'  # face, white, random
   path: 'misc/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
-mode: "joint"
+mode: "hybrid"
