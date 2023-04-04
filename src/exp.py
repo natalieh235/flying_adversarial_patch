@@ -17,7 +17,7 @@ def run_attack(settings):
         os.makedirs(path, exist_ok = True)
         with open(path / "stderr.txt", "w") as stderr:
             with open(path / "stdout.txt", "w") as stdout:
-                subprocess.run(["python3", "adversarial_frontnet/attacks.py", "--file", filename], stderr=stderr, stdout=stdout)
+                subprocess.run(["python3", "src/attacks.py", "--file", filename], stderr=stderr, stdout=stdout)
 
 def on_sigterm():
     # kill the whole process group
@@ -25,7 +25,7 @@ def on_sigterm():
 
 def exp(my_exp):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--file', default='exp2.yaml')
+    parser.add_argument('--file', default='exp1.yaml')
     parser.add_argument('--norun', action='store_true')
     parser.add_argument('-j', type=int, default=3)
     parser.add_argument('--trials', type=int, default=10)

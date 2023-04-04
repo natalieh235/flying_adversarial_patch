@@ -373,7 +373,7 @@ if __name__=="__main__":
 
     # load the camera parameters from the config yaml file
     # import yaml
-    # with open('adversarial_frontnet/camera_calibration/camera_config.yaml', 'r') as file:
+    # with open('src/camera_calibration/camera_config.yaml', 'r') as file:
     #     config = yaml.safe_load(file)
 
     # and convert to numpy arrays

@@ -14,7 +14,7 @@ class Experiment1:
             for mode in ['fixed', 'split', 'joint', 'hybrid']:
                 s = copy.copy(base_settings)
                 s['mode'] = mode
-                s['path'] = "eval/exp1_1/" + mode + str(i+1)
+                s['path'] = "eval/exp1/" + mode + str(i+1)
                 all_settings.append(s)
         return all_settings
 
@@ -40,7 +40,7 @@ class Experiment1:
                 "figure.figsize": (5, 2),
                 "mathtext.fontset": 'stix'
         })
-        eval_multi_run('eval/exp1_1/') 
+        eval_multi_run('eval/exp1/') 
 
 def main():
     e = Experiment1()

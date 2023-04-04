@@ -15,5 +15,5 @@ num_patch_epochs: 1
 batch_size: 32
 patch: 
   mode: 'white'  # face, white, random
-  path: 'misc/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
+  path: 'src/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
 mode: "hybrid" # fixed, split, joint, hybrid

@@ -17,7 +17,7 @@ class Experiment3:
                     if 'face' in patch_mode:
                         s['patch']['mode'] = 'face'
                         patch_num = patch_mode.split('_')[1] 
-                        s['patch']['path'] = 'misc/custom_patches/custom_patch' + patch_num + '_resized.npy'
+                        s['patch']['path'] = 'src/custom_patches/custom_patch' + patch_num + '_resized.npy'
                     else:
                         s['patch']['mode'] = patch_mode
                         s['patch']['path'] = None
