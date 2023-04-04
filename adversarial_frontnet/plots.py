@@ -337,17 +337,19 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
         
         # --- create box plots
         boxplot_means = np.rollaxis(np.array(boxplot_means), 1, 0)
-        print(boxplot_means.shape)
+        # print(boxplot_means.shape)
         # (2, 4, 3, 403) (targets, modes, [base, start, mode], loss vals)
         base_img_mean = np.mean(boxplot_means[:, 3, 0, :], axis=0)
-        print(base_img_mean.shape)
+        # print(base_img_mean.shape)
         base_patch_mean = np.mean(boxplot_means[:, 3, 1, :], axis=0)
         fixed_mean = np.mean(boxplot_means[:, 0, 2, :], axis=0)
         best_mean = np.mean(boxplot_means[:, 3, 2, :], axis=0)
         
-        boxplot_base_start_best = gen_boxplots([base_img_mean, base_patch_mean, fixed_mean, best_mean], title="", labels=['base image', 'starting patch', modes[0], modes[3]], ylabel='Test loss [m]')
+        boxplot_base_start_best = gen_boxplots([base_img_mean, base_patch_mean, fixed_mean, best_mean], title="", labels=['base image', 'initial patch', modes[0], modes[3]], ylabel='Test loss [m]')
         pdf.savefig(boxplot_base_start_best)
         plt.close()
+
+        plt.rcParams.update({"figure.figsize": (3, 2)})
 
         boxplots_target_1 = gen_boxplots([*boxplot_means[0, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{1}$', yrange=[0.0, 0.3])
         boxplots_target_2 = gen_boxplots([*boxplot_means[1, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{2}$', yrange=[0.0, 0.3])
