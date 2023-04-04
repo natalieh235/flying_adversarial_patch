@@ -1,4 +1,4 @@
-path: "eval/exp1"
+path: "eval/exp1/"
 # +x is distance
 # +y is left
 # +z is top
@@ -16,4 +16,3 @@ batch_size: 32
 patch: 
   mode: 'face'  # face, white, random
   path: 'src/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
-mode: "split" # fixed, split, joint, hybrid

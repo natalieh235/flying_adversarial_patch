@@ -12,7 +12,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 
 class Experiment2:
-    def create_settings(self, base_settings, trials):
+    def create_settings(self, base_settings, trials, mode):
         all_settings = []
         for i in range(trials):
             for j in range(1, len(base_settings['targets']['x'])+1):
@@ -20,7 +20,7 @@ class Experiment2:
                 s['targets']['x'] = base_settings['targets']['x'][0:j]
                 s['targets']['y'] = base_settings['targets']['y'][0:j]
                 s['targets']['z'] = base_settings['targets']['z'][0:j]
-                s['path'] = "eval/exp2/" + str(j) + "_" + str(i)
+                s['path'] = "eval/exp2_d/" + str(j) + "_" + str(i)
                 all_settings.append(s)
         return all_settings
 

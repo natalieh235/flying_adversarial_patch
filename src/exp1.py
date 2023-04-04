@@ -8,13 +8,13 @@ from matplotlib import pyplot as plt
 
 
 class Experiment1:
-    def create_settings(self, base_settings, trials):
+    def create_settings(self, base_settings, trials, modes):
         all_settings = []
         for i in range(trials):
-            for mode in ['fixed', 'split', 'joint', 'hybrid']:
+            for mode in modes:
                 s = copy.copy(base_settings)
                 s['mode'] = mode
-                s['path'] = "eval/exp1/" + mode + str(i+1)
+                s['path'] = "eval/exp1_d/" + mode + str(i)
                 all_settings.append(s)
         return all_settings
 
@@ -40,7 +40,7 @@ class Experiment1:
                 "figure.figsize": (5, 2),
                 "mathtext.fontset": 'stix'
         })
-        eval_multi_run('eval/exp1/') 
+        eval_multi_run('eval/exp1_d/') 
 
 def main():
     e = Experiment1()

@@ -29,6 +29,7 @@ def exp(my_exp):
     parser.add_argument('--norun', action='store_true')
     parser.add_argument('-j', type=int, default=3)
     parser.add_argument('--trials', type=int, default=10)
+    parser.add_argument('--mode', nargs='+', default=['all']) # mode can be 'all' or ['fixed', 'joint', 'split', 'hybrid']
     args = parser.parse_args()
 
     signal.signal(signal.SIGTERM, on_sigterm)
@@ -37,7 +38,16 @@ def exp(my_exp):
     with open(args.file) as f:
         base_settings = yaml.load(f, Loader=yaml.FullLoader)
 
-    all_settings = my_exp.create_settings(base_settings, args.trials)
+    print(args.mode)
+
+    if 'all' in args.mode:
+        mode = ['fixed', 'joint', 'split', 'hybrid']
+    elif set(args.mode).issubset(set(['fixed', 'joint', 'split', 'hybrid'])):
+        mode = args.mode
+    else:
+        print("mode can be either 'all' or a combination from ['fixed', 'joint', 'split', 'hybrid']")
+        return
+    all_settings = my_exp.create_settings(base_settings, args.trials, mode)
 
     if not args.norun:
         # start 4 worker processes

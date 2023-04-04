@@ -458,15 +458,6 @@ if __name__=="__main__":
     train_losses = torch.stack(train_losses)
     test_losses = torch.stack(test_losses)
 
-    # print("patches shape: ", optimization_patches.shape)
-    # print("patch losses shape: ", optimization_patch_losses.shape)
-
-    # print("vectors shape: ", optimization_pos_vectors.shape)
-    # print("pos losses shape: ", optimization_pos_losses.shape)
-
-    # print("eval train losses shape: ", train_losses.shape)
-    # print("eval test losses shape: ", test_losses.shape)
-
     print("Saving results...")
     # prepare data for plots
     # normalize scale factor, tx and ty for plots
@@ -481,7 +472,7 @@ if __name__=="__main__":
     # save all results in numpy arrays for later use
     np.save(path / 'patches.npy', optimization_patches.squeeze(1).squeeze(1).cpu().numpy())
     np.save(path / 'patch_losses.npy', optimization_patch_losses.cpu().numpy())
-    np.save(path / 'positions.npy', optimization_pos_vectors.cpu().numpy())
+    # np.save(path / 'positions.npy', optimization_pos_vectors.cpu().numpy())
     np.save(path / 'positions_norm.npy', np.array([all_sf.cpu().numpy(), all_tx.cpu().numpy(), all_ty.cpu().numpy()]))
     np.save(path / 'position_losses.npy', optimization_pos_losses.cpu().numpy())
     np.save(path / 'losses_train.npy', train_losses.cpu().numpy())
