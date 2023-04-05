@@ -23,56 +23,108 @@ $ unzip pulp-frontnet-data.zip
 $ rm pulp-frontnet-data.zip
 ```
 The datasets should now be located at `pulp-frontnet/PyTorch/Data/`.
-### Setting up a Python Virtual Environment
-Please make sure you have Python >= 3.7.10 installed.
+
+### Setting up a Python Virtual Environment and installing needed Python packages
+To install all of the needed Python packages, you can use the provided `requirements.txt` file. To avoid messing with packages you need for other projects, you can set up a Python Virtual Environment. To do so, execute the following commands.
 ```bash
-$ python -m venv /path/to/env
+$ python3 -m venv /path/to/env
 $ source path/to/env/bin/activate
-$ python -m pip install -r path/to/repo/adversarial-frontnet/requirements.txt
+$ python -m pip install -r path/to/flying_adversarial_patch/requirements.txt
 ```
 
-To add the virtual environment as a kernel for Jupyter Notebook
+
+## Compute adversarial patch and position
+To generate the adversarial patch with optimal transformation matrices, you can call
 ```bash
-$ python -m pip install ipykernel
-$ python -m ipykernel install --user --name=kernel_name
+$ python src/attacks.py --file settings.yaml
 ```
-<!-- ### Anaconda Virtual Environment -->
+Please adapt the hyperparameters in `settings.yaml` in the main folder according to your needs.
+### Choosing the optimization approach
+Please change the optimization approach in the `settings.yaml` file to your desired mode. You can choose between `'fixed'`, `'joint'`, `'split'`, and `'hybrid'`.
+```yaml
+mode: 'split' # 'fixed', 'joint', 'split', 'hybrid'
+```
+### Setting target positions
+For setting multiple desired target positions $\bar{\mathbf{p}}^h_K$, change the values in `settings.yaml` for the targets like so:
+```yaml
+  x : [1.0, 0.5]
+  y : [-1, 1]
+  z : [0, null]
+```
+Now, the patch will be optimized for two targets: $\bar{\mathbf{p}}^h_1 = (1, -1, 0)^T$, $\bar{\mathbf{p}}^h_2 = (0.5, 1, z)^T$. For the second target, the attack does not set the $z$-value to a desired one but tries to keep it to the originally predicted $z$ for the current image in $\hat{\mathbf{p}}^h$.
+### Starting from different initial patch
+You can change the initial patch for a training run in the settings file. Either set
+```yaml
+patch: 
+  mode: 'face'
+  path: 'src/custom_patches/custom_patch_resized.npy'
+```
+to, e.g., start from a patch showing a face. Please specify the path to point to a valid numpy array file. The patch should be grayscale and can have any width and height. We prepared multiple patches in the `src/custom_patches` folder.
 
-<!-- ### GAP SDK 3.9.1
-* Download release from https://github.com/GreenWaves-Technologies/gap_sdk/releases/tag/release-v3.9.1
-*  -->
+If the initial patch should be white or starting from random pixel values, adapt the patch mode in the `settings.yaml` like:
+```yaml
+patch: 
+  mode: 'white'
+```
+or 
+```yaml
+patch: 
+  mode: 'random'
+```
+### Results
+All results will be saved at the specified path in the `settings.yaml`.\
+The folder will contain the following files:
+```
+path
+|_settings.yaml # a copy of the settings.yaml
+|_patches.npy   # a numpy array containing all patches
+|_positions_norm.npy # the optimized positions for the K targets
+|_positions_losses.npy # all computed losses for the positions
+|_patch_losses.npy # all computed losses for the current patch
+|_losses_test.npy # the loss on the entire testset after each iteration
+|_losses_test.npy # the loss for the entire trainset after each iteration
+|_boxplot_data.npy # an array containing all of the data needed to create the boxplots from the paper
+```
+## Reproduce the experiments of the paper
+To reproduce all of the results from the paper "Flying Adversarial Patches: Manipulating the Behavior of Deep Learning-based Autonomous Multirotors", we prepared several scripts:
+### Comparison between the different approaches
+To run the full experiment on the different approaches, run:
+```bash
+python src/exp1.py --file exp1.yaml -j 4 --trials 10 --mode all
+```
 
-## Usage
-To perform an attack, you'll currently need to work with `adversarial_frontnet/attacks.py`.\
-Please adjust the code in the main routine for your current use-case.
-### Example for the creation of a single patch for a single image
-(1) Choose an image from the dataset, here we chose image 70:
-```python
-image = dataset.dataset.data[70].unsqueeze(0).to(device)
-```
-(2) Calculate a patch, that shifts the prediction of the x position to 3., on 10,000 epochs and a learning rate of 1e-4: 
-```python
-patch = single_image_attack(model, image, 3., device, 10000, lr=1e-4)
-```
-(3) Specify a path for saving the raw data of the patch with numpy (without the .npy file ending)
-```python
-np.save('path/to/file', patch)
-```
-### Example for creating multiple patches for multiple images
-(1) You don't need to specify an image to attack. Simply hand over the whole dataset to the function:
-```python
-patches = multi_image_attack(model=model, train_data=dataset, target_value=3., device=device)
-```
-(2) Specify a path for saving the raw data of the patches with numpy (without the .npy file ending)
-```python
-np.save('path/to/file', patchs)
-```
-Important! This method currently does not produce a reasonable, universal attack!
+Please adapt the hyperparameters in the `exp1.yaml` file according to your needs. 
 
-### Example for placing a single patch at an arbitrary position
-Please follow the main method in `adversarial_frontnet/patch_placement.py` to place a random patch in a single image at an arbitrary position.
+With `-j 4`, 4 worker processes are spawned and approaches are computed in parallel. Depending on your hardware, you can set `-j` to a different value. If `-j` is set to 1, the different approaches will be computed consecutively.
 
-Prerequisites: Load or calculate the camera configuration (see [Reproduce camera calibration](#reproduce-camera-calibration))
+With `--trials 10` you can set the number of paraellel training runs for the same mode to 10 like we did in the paper.
+
+With `--mode all` you can choose all modes ('fixed', 'joint', 'split', 'hybrid'). You can additionally set the mode to one or a combination of all modes with, e.g., `--mode fixed hybrid` to only run the experiment for the 'fixed' and 'hybrid' approach.
+
+The resulting mean test loss for all optimization approaches will be printed in the terminal.\
+The results folder will contain a PDF file including the boxplots (among others) similar to Fig. 3 and 4 from the paper.
+
+### Scalability for multiple target positions
+To run the experiment on $1\leq K \leq 10$ desired target positions $\bar{\mathbf{p}}^h_K$, run:
+```bash
+python src/exp2.py --file exp2.yaml -j 4 --trials 10
+```
+
+Please adapt `exp2.yaml` according to your needs. Note that the mode needs to be changed in the yaml file! Setting the mode with the `--mode` argument is not possible (currently).
+
+The resulting mean test loss for all $K$ will be printed in the terminal.\
+The results folder will contain a PDF file including a plot similar to Fig. 5 from the paper.
+
+### Comparison different starting patches
+You can reproduce the experiment analyzing different starting patches with executing:
+```bash
+python src/exp3.py --file exp3.yaml -j 4 --trials 10 --mode all
+```
+
+Please adapt `exp3.yaml` according to your needs.
+
+The resulting mean test loss for all patch modes and optimization approaches will be printed in the terminal.
+
 
 ## Reproduce camera calibration
 The camera calibration was performed on the `160x96StrangersTestset` dataset provided by the pulp-frontnet authors. If you followed the steps in [Download the datasets](#download-the-datasets), you can find the dataset here: `pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle`.

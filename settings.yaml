@@ -1,0 +1,19 @@
+path: "result/"
+targets:
+# +x is distance
+# +y is left
+# +z is top
+  x : [1.0, 0.5]
+  y : [-2, null]
+  z : [null, null]
+lr_pos: 0.001
+lr_patch: 0.001
+num_hl_iter: 100
+num_pos_restarts: 20
+num_pos_epochs: 1
+num_patch_epochs: 1
+batch_size: 32 # TODO: try 16, 32, 64
+patch: 
+  mode: 'face'  # face, white, random
+  path: 'src/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
+mode: "split" # fixed, joint, split, hybrid
