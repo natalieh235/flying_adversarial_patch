@@ -1,13 +1,13 @@
-# Adversarial attacks on PULP-Frontnet
+# Flying Adversarial Patches for DL-based multirotors
 
 ## Installation
 ### Clone the repository
 To clone the repository including the code from the pulp-frontnet module, use this command:
 ```bash
 # via ssh
-$ git clone --recurse-submodules git@github.com:phanfeld/adversarial_frontnet.git
+$ git clone --recurse-submodules git@github.com:phanfeld/flying_adversarial_patch.git
 # or via https
-$ git clone --recurse-submodules https://github.com/phanfeld/adversarial_frontnet.git
+$ git clone --recurse-submodules https://github.com/phanfeld/flying_adversarial_patch.git
 ```
 
 If you have cloned the repository without the `--recurse-submodules` argument and want to pull the pulp-frontnet code, please use the following command inside the repository:
@@ -51,7 +51,7 @@ For setting multiple desired target positions $\bar{\mathbf{p}}^h_K$, change the
   y : [-1, 1]
   z : [0, null]
 ```
-Now, the patch will be optimized for two targets: $\bar{\mathbf{p}}^h_1 = (1, -1, 0)^T$, $\bar{\mathbf{p}}^h_2 = (0.5, 1, z)^T$. For the second target, the attack does not set the $z$-value to a desired one but tries to keep it to the originally predicted $z$ for the current image in $\hat{\mathbf{p}}^h$.
+Now, the patch will be optimized for two targets: $\bar{\mathbf{p}}^h_1 = (1, -1, 0)^T$, $\bar{\mathbf{p}}^h_2 = (0.5, 1, z)^T$. For the second target, the attack does not set the $z$-value to a desired one but tries to keep it to the originally predicted $z$ in $\hat{\mathbf{p}}^h$ for the current image.
 ### Starting from different initial patch
 You can change the initial patch for a training run in the settings file. Either set
 ```yaml
@@ -95,7 +95,7 @@ python src/exp1.py --file exp1.yaml -j 4 --trials 10 --mode all
 
 Please adapt the hyperparameters in the `exp1.yaml` file according to your needs. 
 
-With `-j 4`, 4 worker processes are spawned and approaches are computed in parallel. Depending on your hardware, you can set `-j` to a different value. If `-j` is set to 1, the different approaches will be computed consecutively.
+With `-j 4`, 4 worker processes are spawned and all approaches are computed in parallel. Depending on your hardware, you can set `-j` to a different value. If `-j` is set to 1, the different approaches will be computed consecutively.
 
 With `--trials 10` you can set the number of paraellel training runs for the same mode to 10 like we did in the paper.
 
