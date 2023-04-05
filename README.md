@@ -24,13 +24,19 @@ $ rm pulp-frontnet-data.zip
 ```
 The datasets should now be located at `pulp-frontnet/PyTorch/Data/`.
 
-### Installing needed Python packages
-TODO!
+### Setting up a Python Virtual Environment and installing needed Python packages
+To install all of the needed Python packages, you can use the provided `requirements.txt` file. To avoid messing with packages you need for other projects, you can set up a Python Virtual Environment. To do so, execute the following commands.
+```bash
+$ python3 -m venv /path/to/env
+$ source path/to/env/bin/activate
+$ python -m pip install -r path/to/flying_adversarial_patch/requirements.txt
+```
+
 
 ## Compute adversarial patch and position
 To generate the adversarial patch with optimal transformation matrices, you can call
 ```bash
-python src/attacks.py --file settings.yaml
+$ python src/attacks.py --file settings.yaml
 ```
 Please adapt the hyperparameters in `settings.yaml` in the main folder according to your needs.
 ### Choosing the optimization approach
