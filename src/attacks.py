@@ -4,10 +4,7 @@ import yaml
 import argparse
 import torch
 from torch.nn.functional import mse_loss
-from tqdm import tqdm, trange
-
-from torchvision import transforms
-from torchvision.transforms.functional import affine
+from tqdm import trange
 
 from patch_placement import place_patch
 
@@ -78,18 +75,15 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                     # predict x, y, z, yaw
                     x, y, z, phi = model(mod_img)
 
-                    # calculate mean l2 losses (target, y) for all images in batch
-                    # all_l2 = torch.sqrt(((y-target)**2)) 
                     # target_losses.append(torch.mean(all_l2))
                     # prepare shapes for MSE loss
-                    # target_batch = target.repeat(len(batch), 1)
                     # TODO: improve readbility!
                     pred = torch.stack([x, y, z])
                     pred = pred.squeeze(2).mT
 
                      # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
                     mask = torch.isnan(target)
-                    target = torch.where(mask, 0., target) #torch.where(torch.isnan(target_batch), pred, target_batch)
+                    target = torch.where(mask, 0., target)
                     target_batch = (pred * mask) + target
 
                     target_losses.append(mse_loss(target_batch, pred))
@@ -134,14 +128,6 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
                 batch, _ = data
                 batch = batch.to(patch.device) / 255. # limit images to range [0-1]
 
-                #optimized_patches.append(patch_t.clone().detach())
-
-                # scale_factor_n = scale_factor + np.random.normal(0.0, 0.1)
-                # tx_n = tx + np.random.normal(0.0, 0.1)
-                # ty_n = ty + np.random.normal(0.0, 0.1)
-                #scale_norm, tx_norm, ty_norm = norm_transformation(scale_factor_n, tx_n, ty_n)
-
-                #transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
                 target_losses = []
                 for position, target in zip(positions, targets):
                     scale_factor, tx, ty = position
@@ -159,7 +145,6 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
                     # predict x, y, z, yaw
                     x, y, z, phi = model(mod_img)
 
-                    # calculate mean l2 losses (target, y) for all images in batch
                     # prepare shapes for MSE loss
                     #target_batch = target.repeat(len(batch), 1)
                     # TODO: improve readbility!
@@ -167,7 +152,6 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
                     pred = pred.squeeze(2).mT
 
                     # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
-                    #torch.where(torch.isnan(target_batch), pred, target_batch)
                     mask = torch.isnan(target)
                     target = torch.where(mask, 0., target)
                     target_batch = (pred * mask) + target
@@ -215,19 +199,6 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
                 ty = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
                 scaling_factor = torch.FloatTensor(1,).uniform_(-1., 1.).to(patch.device).requires_grad_(True)
 
-            # simple version with sampling, only
-            # scale_norm, tx_norm, ty_norm = norm_transformation(scaling_factor, tx, ty)
-            # transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
-
-            # train_loss = calc_eval_loss(train_set, patch, transformation_matrix, model, target)
-            # test_loss = calc_eval_loss(test_set, patch, transformation_matrix, model, target)
-
-            # print("restart {} ({} {} {}) loss {} {}".format(restart, tx_norm.item(), ty_norm.item(), scale_norm.item(), train_loss, test_loss))
-            # if train_loss < best_loss:
-            #     best_loss = train_loss
-            #     best_tx = tx.clone().detach()
-            #     best_ty = ty.clone().detach()
-            #     best_scaling = scaling_factor.clone().detach()
             
             opt = torch.optim.Adam([scaling_factor, tx, ty], lr=lr)
 
@@ -254,7 +225,6 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
 
                     # calculate mean l2 losses (target, prediction) for all images in batch
                     # prepare shapes for MSE loss
-                    # target_batch = target.repeat(len(batch), 1)
                     # TODO: improve readbility!
                     pred = torch.stack([x, y, z])
                     pred = pred.squeeze(2).mT
