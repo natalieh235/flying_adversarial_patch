@@ -33,7 +33,7 @@ calling this function."
 
 def calc_T_in_attaker_frame(patch_size, scale_factor=0.01, xyz_translations=[0., 0., 0.]):
     """
-    Calculate the matrix for translating the path into the attacker UAV frame.
+    Calculate the matrix for translating the patch into the attacker UAV frame.
     Parameters:
         ----------
         patch_size: list, [height, width] of the patch
@@ -334,10 +334,10 @@ def place_patch(image, patch, transformation_matrix):
 
     # PyTorch's affine grid funtion needs the inverse of the 3x3 transformation matrix
     #transformation_matrix = torch.cat((transformation_matrix, torch.tensor([[[0, 0, 1]]], device=transformation_matrix.device)), dim=1)
-    last_row = torch.tensor([[0, 0, 1]], device=transformation_matrix.device)
+    last_row = torch.tensor([[0, 0, 0, 1]], device=transformation_matrix.device)
     transformation_matrix = torch.stack([torch.cat([transformation_matrix[i], last_row]) for i in range(len(transformation_matrix))])
-    inv_t_matrix = torch.inverse(transformation_matrix)[:, :2] # affine grid expects only the first 2 rows, the last row (0, 0, 1) is neglected
-    affine_grid = torch.nn.functional.affine_grid(inv_t_matrix, size=(len(transformation_matrix), 1, 96, 160), align_corners=False)
+    inv_t_matrix = torch.inverse(transformation_matrix)[:, :3] # affine grid expects only the first 2 rows, the last row (0, 0, 1) is neglected
+    affine_grid = torch.nn.functional.affine_grid(inv_t_matrix, size=(len(transformation_matrix), 1, 1, 96, 160), align_corners=False)
 
     # calculate both the bit mask and the transformed patch
     bit_mask = grid_sample(mask, affine_grid, align_corners=False, padding_mode='zeros').bool()
