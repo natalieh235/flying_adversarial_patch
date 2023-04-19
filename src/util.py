@@ -8,6 +8,9 @@ from Frontnet.DataProcessor import DataProcessor
 from Frontnet.Dataset import Dataset
 from torch.utils import data
 
+import nemo
+from Frontnet.Utils import ModelManager
+
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
@@ -41,6 +44,18 @@ def load_model(path, device, config):
         print("RuntimeError while trying to load the saved model!")
         print("Seems like the model config does not match the saved model architecture.")
         print("Please check if you're loading the right model for the chosen config!")
+
+    return model
+
+def load_quantized(path, config):
+    assert config in FrontnetModel.configs.keys(), 'config must be one of {}'.format(list(FrontnetModel.configs.keys()))
+    model_params = FrontnetModel.configs[config]
+    w, h = model_params['w'], model_params['h']
+
+    model = FrontnetModel(**model_params)
+
+    model = nemo.transform.quantize_pact(model, dummy_input=torch.ones((1, 1, h, w)).to("cpu"))
+    epoch, prec_dict = ModelManager.ReadQ(path, model)
 
     return model
 
