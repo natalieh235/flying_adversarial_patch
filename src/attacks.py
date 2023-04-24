@@ -52,9 +52,9 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
         scale_norm, tx_norm, ty_norm = norm_transformation(sf_n, tx_n, ty_n)
         matrix = get_transformation(scale_norm, tx_norm, ty_norm)
 
-        random_yaw = np.random.normal(-0.3, 0.3)
+        random_yaw = np.random.normal(-0.1, 0.1)
         random_pitch = 0.0
-        random_roll = np.random.normal(-0.3, 0.3)
+        random_roll = np.random.normal(-0.1, 0.1)
         noisy_rotation = torch.tensor(get_rotation(random_yaw, random_pitch, random_roll)).float().to(matrix.device)
 
         matrix[..., :3, :3] = noisy_rotation @ matrix[..., :3, :3]
@@ -483,7 +483,7 @@ if __name__=="__main__":
     print("Evaluation...")
 
     test_batch, test_gt = test_set.dataset[:]
-    test_batch = test_batch.to(device).unsqueeze(1) / 255. # limit images to range [0-1]
+    test_batch = test_batch.to(device) / 255. # limit images to range [0-1]
 
     boxplot_data = []
     #target_mask = torch.tensor(target_mask).to(patch.device)
@@ -496,7 +496,7 @@ if __name__=="__main__":
         target_batch = torch.where(torch.isnan(target_batch), pred_base, target_batch)
         loss_base = torch.tensor([mse_loss(target_batch[i], pred_base[i]) for i in range(len(test_batch))])
 
-        mod_img = place_patch(test_batch, patch_start, transformation_matrix).squeeze(1)
+        mod_img = place_patch(test_batch.unsqueeze(1), patch_start, transformation_matrix).squeeze(1)
         mod_img *= 255. # convert input images back to range [0-255.]
         mod_img.clamp_(0., 255.)
         pred_start_patch = model(mod_img.float())
@@ -505,7 +505,7 @@ if __name__=="__main__":
         target_batch = torch.where(torch.isnan(target_batch), pred_start_patch, target_batch)
         loss_start_patch = torch.tensor([mse_loss(target_batch[i], pred_start_patch[i]) for i in range(len(test_batch))])
 
-        mod_img = place_patch(test_batch, patch, transformation_matrix).squeeze(1)
+        mod_img = place_patch(test_batch.unsqueeze(1), patch, transformation_matrix).squeeze(1)
         mod_img *= 255. # convert input images back to range [0-255.]
         mod_img.clamp_(0., 255.)
         pred_opt_patch = model(mod_img.float())

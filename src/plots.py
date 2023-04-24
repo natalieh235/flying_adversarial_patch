@@ -33,7 +33,7 @@ def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, img_idx=0):
     for target_idx in range(len(targets)):
         transformation_matrix = get_transformation(scale_norm[target_idx], tx_norm[target_idx], ty_norm[target_idx])
         
-        final_images.append(place_patch(base_img, patch, transformation_matrix).numpy()[0][0])
+        final_images.append(place_patch(base_img.unsqueeze(0), patch.unsqueeze(0), transformation_matrix).numpy()[0][0])
 
     return np.array(final_images)
 
@@ -49,7 +49,6 @@ def plot_results(path):
 
     mode = settings['mode']
 
-    # print(targets)
 
     optimization_patches = np.load(path / 'patches.npy')
     # print(optimization_patches.shape)
@@ -68,8 +67,10 @@ def plot_results(path):
     train_losses = np.load(path / 'losses_train.npy')
     test_losses = np.load(path / 'losses_test.npy')
 
+
+    print(mode, "mean", np.mean(test_losses), "std", np.std(test_losses))
     # print(train_losses.shape)
-    # print(test_losses.shape)
+    
 
     boxplot_data = np.load(path / 'boxplot_data.npy')
     boxplot_data = np.rollaxis(boxplot_data, 2, 1)
@@ -112,7 +113,7 @@ def plot_results(path):
         for target_idx, target in enumerate(targets):
             fig = plt.figure()
             ax = fig.add_subplot(111)
-            ax.set_title(f'Losses after each patch & position optimization')
+            ax.set_title(f'Losses after each patch and position optimization')
             ax.plot(train_losses[..., target_idx], label=f'train set, target {target}')
             ax.plot(test_losses[..., target_idx], label=f'test set, target {target}')
             ax.legend()
@@ -176,6 +177,9 @@ def plot_results(path):
         pdf.savefig(fig)
         plt.close(fig)
 
+        mean = np.mean(boxplot_data[:, :, 1])
+        std = np.std(boxplot_data[:, :, 1])
+        print(f"initial patch: mean:{mean}, std:{std}")
         for target_idx, target in enumerate(targets):
             fig, ax = plt.subplots(1, 1)
             ax.boxplot(boxplot_data[target_idx], 1, 'D', labels=['base images', 'starting patch', 'optimized patch'])
@@ -189,7 +193,7 @@ def plot_results(path):
 
         for target_idx, target in enumerate(targets):
             fig, ax = plt.subplots(1,1)
-            ax.imshow(img_w_patch[target_idx], cmap='gray')
+            ax.imshow(img_w_patch[target_idx][0], cmap='gray')
             ax.set_title(f'Placed patch after optimization, target {target}')
             pdf.savefig(fig)
             plt.close()
@@ -278,6 +282,7 @@ def gen_boxplots(data, title, labels, ylabel='MSE', yrange=None):
     ax.boxplot(data, 1, 'D', labels=labels)
     ax.set_title(title)
     ax.set_ylabel(ylabel)
+    ax.grid(axis='y')
     if yrange is not None:
         ax.set_ylim(yrange[0], yrange[1])
     return fig
@@ -356,19 +361,6 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
         pdf.savefig(boxplots_target_1)
         pdf.savefig(boxplots_target_2)
         plt.close()
-        # for target, means in zip(targets, boxplot_means):
-        #     base_img_mean = np.mean(means[:, 0, :], axis=0)
-        #     base_patch_mean = np.mean(means[:, 1, :], axis=0)
-        #     best_mean = np.mean(means[:, 4, :], axis=0)
-
-        #     #boxplot = gen_boxplots([base_img_mean, base_patch_mean, *means[:, 2]], title=f'MSE for each test image, taregt: {target}, runs {runs}', labels=['base images', 'starting patch', *modes], ylabel='mean MSE')
-        #     #boxplots_base_start_fixed = gen_boxplots([base_img_mean, base_patch_mean, means[0, 2]], title=f'target: x = {target[0]}, y = {target[1]}, z={target[2]}', labels=['base images', 'starting patch', modes[0]], ylabel='Test loss [m]')
-        #     #boxplots_joint_split_hybrid = gen_boxplots([*means[1:, 2]], title=f'target: x = {target[0]}, y = {target[1]}, z={target[2]}', labels=[*modes[1:]], ylabel='Test loss [m]')
-        #     boxplot_base_start_best = gen_boxplots([base_img_mean, base_patch_mean, best_mean], title="", labels=['base image', 'starting patch', 'hybrid'])
-        #     boxplots_two = gen_boxplots()
-        #     pdf.savefig(boxplots_base_start_fixed)
-        #     pdf.savefig(boxplots_joint_split_hybrid)
-        #     pdf.close
 
 
 if __name__=="__main__":
