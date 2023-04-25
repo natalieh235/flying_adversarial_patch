@@ -11,7 +11,7 @@ from patch_placement import place_patch
 from pathlib import Path
 
 def get_transformation(sf, tx, ty):
-    translation_vector = torch.stack([tx, ty, torch.zeros([1])]).unsqueeze(0)
+    translation_vector = torch.stack([tx, ty, torch.zeros([1], device=tx.device)]).unsqueeze(0)
 
     eye = torch.eye(3, 3).unsqueeze(0).to(sf.device)
     scale = eye * sf
@@ -53,7 +53,7 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
         matrix = get_transformation(scale_norm, tx_norm, ty_norm)
 
         random_yaw = np.random.normal(-0.1, 0.1)
-        random_pitch = 0.0
+        random_pitch = 0.0#np.random.normal(-0.1, 0.1)
         random_roll = np.random.normal(-0.1, 0.1)
         noisy_rotation = torch.tensor(get_rotation(random_yaw, random_pitch, random_roll)).float().to(matrix.device)
 
@@ -316,7 +316,8 @@ if __name__=="__main__":
     parser.add_argument('--file', default='settings.yaml')
     args = parser.parse_args()
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    #device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cpu')
 
     # SETTINGS
     with open(args.file) as f:
@@ -343,17 +344,18 @@ if __name__=="__main__":
     targets = torch.from_numpy(targets).to(device).float()
 
     from util import load_dataset, load_model
-    model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
-    model_config = '160x32'
+    # model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
+    # model_config = '160x32'
     dataset_path = 'pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle'
 
-    model = load_model(path=model_path, device=device, config=model_config)
-    model.eval()
+    # model = load_model(path=model_path, device=device, config=model_config)
+    # model.eval()
 
     # load quantized network
-    # from util import load_quantized
-    # model = load_quantized(model_path, model_config)
-    # model.eval()
+    from util import load_quantized
+    model_path = 'misc/Frontnet.onnx'
+    model = load_quantized(model_path, device)
+    model.eval()
 
     train_set = load_dataset(path=dataset_path, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=0)
     # train_set.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!
