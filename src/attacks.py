@@ -237,7 +237,7 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
                     batch = batch.to(patch.device).unsqueeze(1) / 255. # limit images to range [0-1]
             
                     noisy_transformations = gen_noisy_transformations(len(batch), scaling_factor, tx, ty)
-                    patch_batch = patch.repeat(len(batch), 1, 1, 1)
+                    patch_batch = torch.cat([patch for _ in range(len(batch))])
  
                     mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations).squeeze(1)
                     mod_img *= 255.  # convert input images back to range [0-255.]
@@ -316,8 +316,8 @@ if __name__=="__main__":
     parser.add_argument('--file', default='settings.yaml')
     args = parser.parse_args()
 
-    #device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    #device = torch.device('cpu')
 
     # SETTINGS
     with open(args.file) as f:
@@ -337,24 +337,31 @@ if __name__=="__main__":
     num_patch_epochs = settings['num_patch_epochs']
     batch_size = settings['batch_size']
     mode = settings['mode']
+    quantized = settings['quantized']
 
     # get target values in correct shape and move tensor to device
     targets = [values for _, values in settings['targets'].items()]
     targets = np.array(targets, dtype=float).T
     targets = torch.from_numpy(targets).to(device).float()
 
-    from util import load_dataset, load_model
-    # model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
-    # model_config = '160x32'
+    from util import load_dataset
     dataset_path = 'pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle'
 
     # model = load_model(path=model_path, device=device, config=model_config)
     # model.eval()
-
-    # load quantized network
-    from util import load_quantized
-    model_path = 'misc/Frontnet.onnx'
-    model = load_quantized(model_path, device)
+    print("Loading quantized network? ", quantized)
+    if not quantized:
+        # load full-precision network
+        from util import load_model
+        model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
+        model_config = '160x32'
+        model = load_model(path=model_path, device=device, config=model_config)
+    else:
+        # load quantized network
+        from util import load_quantized
+        model_path = 'misc/Frontnet.onnx'
+        model = load_quantized(path=model_path, device=device)
+    
     model.eval()
 
     train_set = load_dataset(path=dataset_path, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=0)

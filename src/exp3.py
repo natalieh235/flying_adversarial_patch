@@ -6,14 +6,15 @@ import exp
 
 
 class Experiment3:
-    def create_settings(self, base_settings, trials, modes):
+    def create_settings(self, base_settings, trials, modes, quantized):
         all_settings = []
         for patch_mode in ['face_2', 'face_3', 'face_4', 'white', 'random']:
             for i in range(trials):
                 for mode in modes:
                     s = copy.copy(base_settings)
                     s['mode'] = mode
-                    s['path'] = "eval/exp3_d"+ patch_mode + '/' + mode + str(i)
+                    s['path'] = "eval/exp3"+ patch_mode + '/' + mode + str(i)
+                    s['quantized'] = quantized
                     if 'face' in patch_mode:
                         s['patch']['mode'] = 'face'
                         patch_num = patch_mode.split('_')[1] 

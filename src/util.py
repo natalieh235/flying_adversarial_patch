@@ -8,15 +8,15 @@ from Frontnet.DataProcessor import DataProcessor
 from Frontnet.Dataset import Dataset
 from torch.utils import data
 
-import nemo
-from Frontnet.Utils import ModelManager
+# import nemo
+# from Frontnet.Utils import ModelManager
 
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 
 import numpy as np
-import random
+# import random
 
 import onnx
 from onnx import numpy_helper
@@ -51,20 +51,12 @@ def load_model(path, device, config):
     return model
 
 def load_quantized(path, device):
-    # assert config in FrontnetModel.configs.keys(), 'config must be one of {}'.format(list(FrontnetModel.configs.keys()))
-    # model_params = FrontnetModel.configs[config]
-    # w, h = model_params['w'], model_params['h']
-
-    # model = FrontnetModel(**model_params)
-
-    # model = nemo.transform.quantize_pact(model, dummy_input=torch.ones((1, 1, h, w)).to("cpu"))
-    # epoch, prec_dict = ModelManager.ReadQ(path, model)
-    model = FrontnetQuantizedModel(path).to(device)
+    model = FrontnetQuantizedModel(path, device)
 
     return model
 
 class FrontnetQuantizedModel(torch.nn.Module):
-    def __init__(self, path):
+    def __init__(self, path, device):
         super(FrontnetQuantizedModel, self).__init__()
 
         onnx_model = onnx.load(path)
@@ -72,7 +64,7 @@ class FrontnetQuantizedModel(torch.nn.Module):
 
         self.weights = {}
         for node in onnx_model.graph.initializer:
-            data = torch.tensor(numpy_helper.to_array(node))
+            data = torch.tensor(numpy_helper.to_array(node)).to(device)
             if 'kappa' in node.name:
                 name = node.name.replace('kappa', 'gamma')
             elif 'lamda' in node.name:
@@ -87,7 +79,7 @@ class FrontnetQuantizedModel(torch.nn.Module):
             if node.op_type == "Constant":
                 const_value = numpy_helper.to_array(node.attribute[0].t)
                 constants.append(const_value.item())
-        self.constants = torch.tensor(np.array(constants))
+        self.constants = torch.tensor(np.array(constants)).to(device)
         
 
     def forward(self, x):
@@ -146,6 +138,7 @@ class FrontnetQuantizedModel(torch.nn.Module):
         z_q = out[:, 2]
         phi_q = out[:, 3]
 
+        # de-quantize results
         x = x_q * 2.46902e-05 + 1.02329e+00
         y = y_q * 2.46902e-05 + 7.05523e-04
         z = z_q * 2.46902e-05 + 2.68245e-01
