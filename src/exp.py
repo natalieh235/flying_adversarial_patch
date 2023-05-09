@@ -47,7 +47,7 @@ def exp(my_exp):
     else:
         print("Mode can be either 'all' or a combination from ['fixed', 'joint', 'split', 'hybrid']")
         
-    all_settings = my_exp.create_settings(base_settings, args.trials, mode, args.quantized)
+    all_settings = my_exp.create_settings(base_settings, args.trials, modes, args.quantized)
 
     if not args.norun:
         # start 4 worker processes

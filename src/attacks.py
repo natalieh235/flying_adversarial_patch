@@ -52,9 +52,9 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
         scale_norm, tx_norm, ty_norm = norm_transformation(sf_n, tx_n, ty_n)
         matrix = get_transformation(scale_norm, tx_norm, ty_norm)
 
-        random_yaw = np.random.normal(-0.1, 0.1)
-        random_pitch = 0.0#np.random.normal(-0.1, 0.1)
-        random_roll = np.random.normal(-0.1, 0.1)
+        random_yaw = np.deg2rad(np.random.normal(-45, 45))
+        random_pitch = np.deg2rad(np.random.normal(-20, 20))
+        random_roll = np.deg2rad(np.random.normal(-10, 10))
         noisy_rotation = torch.tensor(get_rotation(random_yaw, random_pitch, random_roll)).float().to(matrix.device)
 
         matrix[..., :3, :3] = noisy_rotation @ matrix[..., :3, :3]
