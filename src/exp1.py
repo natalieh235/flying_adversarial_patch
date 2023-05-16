@@ -8,13 +8,15 @@ from matplotlib import pyplot as plt
 
 
 class Experiment1:
-    def create_settings(self, base_settings, trials, modes):
+    def create_settings(self, base_settings, trials, modes, quantized):
         all_settings = []
+        base_path = Path(base_settings['path'])
         for i in range(trials):
             for mode in modes:
                 s = copy.copy(base_settings)
                 s['mode'] = mode
-                s['path'] = "eval/exp1_d/" + mode + str(i)
+                s['path'] = str(base_path / (mode + str(i)))
+                s['quantized'] = quantized
                 all_settings.append(s)
         return all_settings
 
@@ -40,7 +42,7 @@ class Experiment1:
                 "figure.figsize": (5, 2),
                 "mathtext.fontset": 'stix'
         })
-        eval_multi_run('eval/exp1_d/') 
+        eval_multi_run(p.parent, list(result.keys())) 
 
 def main():
     e = Experiment1()

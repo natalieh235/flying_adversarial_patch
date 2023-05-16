@@ -4,3 +4,6 @@
 [submodule "hardware/crazyflie-firmware"]
 	path = hardware/crazyflie-firmware
 	url = git@github.com:IMRCLab/crazyflie-firmware.git
+[submodule "nemo"]
+	path = nemo
+	url = git@github.com:phanfeld/nemo.git

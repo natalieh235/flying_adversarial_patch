@@ -67,8 +67,9 @@ def plot_results(path):
     train_losses = np.load(path / 'losses_train.npy')
     test_losses = np.load(path / 'losses_test.npy')
 
+    # print(train_losses.shape)
 
-    print(mode, "mean", np.mean(test_losses), "std", np.std(test_losses))
+    print(mode, "last", np.sum(test_losses[-1]), "mean", np.mean(test_losses), "std", np.std(test_losses))
     # print(train_losses.shape)
     
 
@@ -179,7 +180,8 @@ def plot_results(path):
 
         mean = np.mean(boxplot_data[:, :, 1])
         std = np.std(boxplot_data[:, :, 1])
-        print(f"initial patch: mean:{mean}, std:{std}")
+        last = np.sum(boxplot_data[:, :, 1][:, -1])
+        print(f"initial patch: last:{last}, mean:{mean}, std:{std}")
         for target_idx, target in enumerate(targets):
             fig, ax = plt.subplots(1, 1)
             ax.boxplot(boxplot_data[target_idx], 1, 'D', labels=['base images', 'starting patch', 'optimized patch'])
@@ -265,7 +267,7 @@ def show_multi_placed(result, targets, mode):
     img_idx = 0
     for row in range(2):
         #for column in range(5):
-        ax[row].imshow(final_images[row, best_idx], cmap='gray')
+        ax[row].imshow(final_images[row, best_idx][0], cmap='gray')
         ax[row].set_title(f'target prediction: x={targets[row][0]}, y={targets[row][1]}, z={targets[row][2]}')
         ax[row].axis('off')
             #if img_idx == best_idx[target_idx]:
@@ -287,7 +289,7 @@ def gen_boxplots(data, title, labels, ylabel='MSE', yrange=None):
         ax.set_ylim(yrange[0], yrange[1])
     return fig
 
-def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
+def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid'], verbose=False):
     path = Path(path)
 
     results = defaultdict(list)
@@ -303,14 +305,14 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
     targets = [values for _, values in settings['targets'].items()]
     targets = np.array(targets, dtype=float).T
 
-    for mode in modes:
-        all = results[mode]['test_loss'][:, :, -1]
-        print(mode, "mean", np.mean(all), "std", np.std(all))
+    if verbose:
+        for mode in modes:
+            all = results[mode]['test_loss'][:, :, -1]
+            print(mode, "mean", np.mean(all), "std", np.std(all))
 
     with PdfPages(Path(path) / 'combined_result.pdf') as pdf:
         
         boxplot_means = [] 
-
         for mode in modes:
             boxplot_mean = []
 
@@ -326,7 +328,7 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid']):
                     plt.close()
 
 
-                train_test_loss = plot_multi([results[mode]['train_loss'][i].T, results[mode]['test_loss'][i].T], title=f"Evaluation loss after each iteration, mode: {mode}, runs: {runs}, target: {target}", labels=['train loss', 'test loss'], colors=['lightsteelblue', 'peachpuff'])
+                train_test_loss = plot_multi([results[mode]['train_loss'][i].T, results[mode]['test_loss'][i].T], title=f"Evaluation loss, mode: {mode}, runs: {runs}, target: {target}", labels=['train loss', 'test loss'], colors=['lightsteelblue', 'peachpuff'])
                 pdf.savefig(train_test_loss)
                 plt.close()
                 
@@ -382,6 +384,6 @@ if __name__=="__main__":
     })
 
     if args.final:
-        eval_multi_run(args.path, args.modes)
+        eval_multi_run(args.path, args.modes, verbose=True)
     else:
         plot_results(args.path)

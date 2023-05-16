@@ -16,3 +16,4 @@ batch_size: 32
 patch: 
   mode: 'white'  # face, white, random
   path: 'src/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
+quantized: false

@@ -11,7 +11,7 @@ from patch_placement import place_patch
 from pathlib import Path
 
 def get_transformation(sf, tx, ty):
-    translation_vector = torch.stack([tx, ty, torch.zeros([1])]).unsqueeze(0)
+    translation_vector = torch.stack([tx, ty, torch.zeros([1], device=tx.device)]).unsqueeze(0)
 
     eye = torch.eye(3, 3).unsqueeze(0).to(sf.device)
     scale = eye * sf
@@ -52,9 +52,9 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
         scale_norm, tx_norm, ty_norm = norm_transformation(sf_n, tx_n, ty_n)
         matrix = get_transformation(scale_norm, tx_norm, ty_norm)
 
-        random_yaw = np.random.normal(-0.1, 0.1)
-        random_pitch = 0.0
-        random_roll = np.random.normal(-0.1, 0.1)
+        random_yaw = np.deg2rad(np.random.normal(-45, 45))
+        random_pitch = np.deg2rad(np.random.normal(-20, 20))
+        random_roll = np.deg2rad(np.random.normal(-10, 10))
         noisy_rotation = torch.tensor(get_rotation(random_yaw, random_pitch, random_roll)).float().to(matrix.device)
 
         matrix[..., :3, :3] = noisy_rotation @ matrix[..., :3, :3]
@@ -237,7 +237,7 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
                     batch = batch.to(patch.device).unsqueeze(1) / 255. # limit images to range [0-1]
             
                     noisy_transformations = gen_noisy_transformations(len(batch), scaling_factor, tx, ty)
-                    patch_batch = patch.repeat(len(batch), 1, 1, 1)
+                    patch_batch = torch.cat([patch for _ in range(len(batch))])
  
                     mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations).squeeze(1)
                     mod_img *= 255.  # convert input images back to range [0-255.]
@@ -317,6 +317,7 @@ if __name__=="__main__":
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    #device = torch.device('cpu')
 
     # SETTINGS
     with open(args.file) as f:
@@ -336,24 +337,32 @@ if __name__=="__main__":
     num_patch_epochs = settings['num_patch_epochs']
     batch_size = settings['batch_size']
     mode = settings['mode']
+    quantized = settings['quantized']
 
     # get target values in correct shape and move tensor to device
     targets = [values for _, values in settings['targets'].items()]
     targets = np.array(targets, dtype=float).T
     targets = torch.from_numpy(targets).to(device).float()
 
-    from util import load_dataset, load_model
-    model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
-    model_config = '160x32'
+    from util import load_dataset
     dataset_path = 'pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle'
 
-    model = load_model(path=model_path, device=device, config=model_config)
-    model.eval()
-
-    # load quantized network
-    # from util import load_quantized
-    # model = load_quantized(model_path, model_config)
+    # model = load_model(path=model_path, device=device, config=model_config)
     # model.eval()
+    print("Loading quantized network? ", quantized)
+    if not quantized:
+        # load full-precision network
+        from util import load_model
+        model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
+        model_config = '160x32'
+        model = load_model(path=model_path, device=device, config=model_config)
+    else:
+        # load quantized network
+        from util import load_quantized
+        model_path = 'misc/Frontnet.onnx'
+        model = load_quantized(path=model_path, device=device)
+    
+    model.eval()
 
     train_set = load_dataset(path=dataset_path, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=0)
     # train_set.dataset.data.to(device)   # TODO: __getitem__ and next(iter(.)) are still yielding data on cpu!

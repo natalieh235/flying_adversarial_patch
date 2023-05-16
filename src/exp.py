@@ -27,6 +27,7 @@ def exp(my_exp):
     parser = argparse.ArgumentParser()
     parser.add_argument('--file', default='exp1.yaml')
     parser.add_argument('--norun', action='store_true')
+    parser.add_argument('--quantized', action='store_true')
     parser.add_argument('-j', type=int, default=3)
     parser.add_argument('--trials', type=int, default=10)
     parser.add_argument('--mode', nargs='+', default=['all']) # mode can be 'all' or ['fixed', 'joint', 'split', 'hybrid']
@@ -38,24 +39,23 @@ def exp(my_exp):
     with open(args.file) as f:
         base_settings = yaml.load(f, Loader=yaml.FullLoader)
 
-    print(args.mode)
 
     if 'all' in args.mode:
-        mode = ['fixed', 'joint', 'split', 'hybrid']
-    elif set(args.mode).issubset(set(['fixed', 'joint', 'split', 'hybrid'])):
-        mode = args.mode
+        modes = ['fixed', 'joint', 'split', 'hybrid']
+    elif set(args.mode) & set(['fixed', 'joint', 'split', 'hybrid']):
+        modes = args.mode
     else:
-        print("mode can be either 'all' or a combination from ['fixed', 'joint', 'split', 'hybrid']")
-        return
-    all_settings = my_exp.create_settings(base_settings, args.trials, mode)
+        print("Mode can be either 'all' or a combination from ['fixed', 'joint', 'split', 'hybrid']")
+        
+    all_settings = my_exp.create_settings(base_settings, args.trials, modes, args.quantized)
 
     if not args.norun:
         # start 4 worker processes
         with Pool(processes=args.j) as pool:
             for i in pool.imap_unordered(run_attack, all_settings):
                 pass
-
-    my_exp.stats(all_settings)
+    else:            
+        my_exp.stats(all_settings)
 
 if __name__ == '__main__':
     pass
