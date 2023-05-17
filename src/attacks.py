@@ -11,12 +11,14 @@ from patch_placement import place_patch
 from pathlib import Path
 
 def get_transformation(sf, tx, ty):
-    translation_vector = torch.stack([tx, ty, torch.zeros([1], device=tx.device)]).unsqueeze(0)
+    translation_vector = torch.stack([tx, ty]).unsqueeze(0) #torch.zeros([1], device=tx.device)]).unsqueeze(0)
 
-    eye = torch.eye(3, 3).unsqueeze(0).to(sf.device)
+    eye = torch.eye(2, 2).unsqueeze(0).to(sf.device)
     scale = eye * sf
 
-    transformation_matrix = torch.cat((scale, translation_vector), dim=2)
+    # print(scale.shape, translation_vector.shape)
+
+    transformation_matrix = torch.cat([scale, translation_vector], dim=2)
     return transformation_matrix.float()
 
 def norm_transformation(sf, tx, ty):
@@ -26,21 +28,24 @@ def norm_transformation(sf, tx, ty):
 
     return scaling_norm, tx_tanh, ty_tanh
 
-def get_rotation(yaw, pitch, roll):
-    rotation_yaw = np.array([[np.cos(yaw), -np.sin(yaw), 0.0],
-                             [np.sin(yaw), np.cos(yaw), 0.0],
-                             [0.0, 0.0, 1.0]])
+# def get_rotation(yaw, pitch, roll):
+#     rotation_yaw = np.array([[np.cos(yaw), -np.sin(yaw), 0.0, 0.0],
+#                          [np.sin(yaw), np.cos(yaw), 0.0, 0.0],
+#                          [0.0, 0.0, 1.0, 0.0],
+#                          [0.0, 0.0, 0.0, 1.0]])
     
-    rotation_pitch = np.array([[np.cos(pitch), 0.0, np.sin(pitch)],
-                               [0.0, 1.0, 0.0],
-                               [-np.sin(pitch), 0.0, np.cos(pitch)]])
+#     rotation_pitch = np.array([[np.cos(pitch), 0.0, np.sin(pitch), 0.0],
+#                            [0.0, 1.0, 0.0, 0.0],
+#                            [-np.sin(pitch), 0.0, np.cos(pitch), 0.0],
+#                            [0.0, 0.0, 0.0, 1.0]])
 
-    rotation_roll = np.array([[1.0, 0.0, 0.0],
-                              [0.0, np.cos(roll), -np.sin(roll)],
-                              [0.0, np.sin(roll), np.cos(roll)]])
+#     rotation_roll = np.array([[1.0, 0.0, 0.0, 0.0],
+#                           [0.0, np.cos(roll), -np.sin(roll), 0.0],
+#                           [0.0, np.sin(roll), np.cos(roll), 0.0],
+#                           [0.0, 0.0, 0.0, 1.0]])     
 
-    rotation_matrix = rotation_yaw @ rotation_pitch @ rotation_roll
-    return rotation_matrix
+#     rotation_matrix = rotation_yaw @ rotation_pitch @ rotation_roll
+#     return rotation_matrix
 
 def gen_noisy_transformations(batch_size, sf, tx, ty):
     noisy_transformation_matrix = []
@@ -52,12 +57,12 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
         scale_norm, tx_norm, ty_norm = norm_transformation(sf_n, tx_n, ty_n)
         matrix = get_transformation(scale_norm, tx_norm, ty_norm)
 
-        random_yaw = np.deg2rad(np.random.normal(-45, 45))
-        random_pitch = np.deg2rad(np.random.normal(-20, 20))
-        random_roll = np.deg2rad(np.random.normal(-10, 10))
-        noisy_rotation = torch.tensor(get_rotation(random_yaw, random_pitch, random_roll)).float().to(matrix.device)
+        # random_yaw = np.deg2rad(np.random.normal(-10, 10))
+        # random_pitch = np.deg2rad(np.random.normal(-5, 5))
+        # random_roll = np.deg2rad(np.random.normal(-5, 5))
+        #noisy_rotation = torch.tensor(get_rotation(random_yaw, random_pitch, random_roll)).float().to(matrix.device)
 
-        matrix[..., :3, :3] = noisy_rotation @ matrix[..., :3, :3]
+        #matrix[..., :3, :3] = noisy_rotation @ matrix[..., :3, :3]
 
         noisy_transformation_matrix.append(matrix)
     
@@ -80,7 +85,7 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
             actual_loss = torch.tensor(0.).to(patch.device)
             for _, data in enumerate(dataset):
                 batch, _ = data
-                batch = batch.to(patch.device).unsqueeze(1) / 255. # limit images to range [0-1]
+                batch = batch.to(patch.device) / 255. # limit images to range [0-1]
 
                 target_losses = []
                 for position, target in zip(positions_t, targets):
@@ -88,7 +93,7 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                     noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
                     patch_batch = torch.cat([patch_t for _ in range(len(batch))])
 
-                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations).squeeze(1) 
+                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations) 
                     mod_img *= 255. # convert input images back to range [0-255.]
 
                     # add noise to patch+background
@@ -150,7 +155,7 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
             actual_loss = torch.tensor(0.).to(patch.device)
             for _, data in enumerate(dataset):
                 batch, _ = data
-                batch = batch.to(patch.device).unsqueeze(1) / 255. # limit images to range [0-1]
+                batch = batch.to(patch.device) / 255. # limit images to range [0-1]
 
                 target_losses = []
                 for position, target in zip(positions, targets):
@@ -158,7 +163,7 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
                     noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
                     patch_batch = torch.cat([patch_t for _ in range(len(batch))])
 
-                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations).squeeze(1)
+                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
                     mod_img *= 255.  # convert input images back to range [0-255.]
 
                     # add noise to patch+background
@@ -234,12 +239,12 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
                 actual_loss = torch.tensor(0.).to(patch.device)
                 for _, data in enumerate(dataset):
                     batch, _ = data
-                    batch = batch.to(patch.device).unsqueeze(1) / 255. # limit images to range [0-1]
+                    batch = batch.to(patch.device) / 255. # limit images to range [0-1]
             
                     noisy_transformations = gen_noisy_transformations(len(batch), scaling_factor, tx, ty)
                     patch_batch = torch.cat([patch for _ in range(len(batch))])
  
-                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations).squeeze(1)
+                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
                     mod_img *= 255.  # convert input images back to range [0-255.]
                     # add noise to patch+background
                     mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(mod_img.shape).to(patch.device)    
@@ -285,9 +290,9 @@ def calc_eval_loss(dataset, patch, transformation_matrix, model, target):
 
     for _, data in enumerate(dataset):
         batch, _ = data
-        batch = batch.to(patch.device).unsqueeze(1) / 255. # limit images to range [0-1]
+        batch = batch.to(patch.device) / 255. # limit images to range [0-1]
 
-        mod_img = place_patch(batch, patch, transformation_matrix).squeeze(1)
+        mod_img = place_patch(batch, patch, transformation_matrix)
         mod_img *= 255. # convert input images back to range [0-255.]
         mod_img.clamp_(0., 255.)
 
@@ -374,16 +379,16 @@ if __name__=="__main__":
     # load the patch from misc folder
     if settings['patch']['mode'] == 'face':
         patch_start = np.load(settings['patch']['path'])
-        patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).unsqueeze(0).to(device) / 255.
+        patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device) / 255.
         patch_start.clamp_(0., 1.)
 
     # or start from a random patch
     if settings['patch']['mode'] == 'random':
-        patch_start = torch.rand(1, 1, 1, 300, 320).to(device)
+        patch_start = torch.rand(1, 1, 96, 160).to(device)
 
     # or start from a white patch
     if settings['patch']['mode'] == 'white':
-        patch_start = torch.ones(1, 1, 1, 300, 320).to(device)
+        patch_start = torch.ones(1, 1, 300, 320).to(device)
 
     optimization_pos_losses = []
     optimization_pos_vectors = []
@@ -505,7 +510,7 @@ if __name__=="__main__":
         target_batch = torch.where(torch.isnan(target_batch), pred_base, target_batch)
         loss_base = torch.tensor([mse_loss(target_batch[i], pred_base[i]) for i in range(len(test_batch))])
 
-        mod_img = place_patch(test_batch.unsqueeze(1), patch_start, transformation_matrix).squeeze(1)
+        mod_img = place_patch(test_batch, patch_start, transformation_matrix).squeeze(1)
         mod_img *= 255. # convert input images back to range [0-255.]
         mod_img.clamp_(0., 255.)
         pred_start_patch = model(mod_img.float())
@@ -514,7 +519,7 @@ if __name__=="__main__":
         target_batch = torch.where(torch.isnan(target_batch), pred_start_patch, target_batch)
         loss_start_patch = torch.tensor([mse_loss(target_batch[i], pred_start_patch[i]) for i in range(len(test_batch))])
 
-        mod_img = place_patch(test_batch.unsqueeze(1), patch, transformation_matrix).squeeze(1)
+        mod_img = place_patch(test_batch, patch, transformation_matrix).squeeze(1)
         mod_img *= 255. # convert input images back to range [0-255.]
         mod_img.clamp_(0., 255.)
         pred_opt_patch = model(mod_img.float())
