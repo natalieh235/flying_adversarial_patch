@@ -510,7 +510,7 @@ if __name__=="__main__":
         target_batch = torch.where(torch.isnan(target_batch), pred_base, target_batch)
         loss_base = torch.tensor([mse_loss(target_batch[i], pred_base[i]) for i in range(len(test_batch))])
 
-        mod_img = place_patch(test_batch, patch_start, transformation_matrix).squeeze(1)
+        mod_img = place_patch(test_batch, patch_start, transformation_matrix)
         mod_img *= 255. # convert input images back to range [0-255.]
         mod_img.clamp_(0., 255.)
         pred_start_patch = model(mod_img.float())
@@ -519,7 +519,7 @@ if __name__=="__main__":
         target_batch = torch.where(torch.isnan(target_batch), pred_start_patch, target_batch)
         loss_start_patch = torch.tensor([mse_loss(target_batch[i], pred_start_patch[i]) for i in range(len(test_batch))])
 
-        mod_img = place_patch(test_batch, patch, transformation_matrix).squeeze(1)
+        mod_img = place_patch(test_batch, patch, transformation_matrix)
         mod_img *= 255. # convert input images back to range [0-255.]
         mod_img.clamp_(0., 255.)
         pred_opt_patch = model(mod_img.float())

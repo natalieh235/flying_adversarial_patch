@@ -33,7 +33,7 @@ def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, img_idx=0):
     for target_idx in range(len(targets)):
         transformation_matrix = get_transformation(scale_norm[target_idx], tx_norm[target_idx], ty_norm[target_idx])
         
-        final_images.append(place_patch(base_img.unsqueeze(0), patch.unsqueeze(0), transformation_matrix).numpy()[0][0])
+        final_images.append(place_patch(base_img, patch, transformation_matrix, random_perspection=False).numpy()[0])
 
     return np.array(final_images)
 

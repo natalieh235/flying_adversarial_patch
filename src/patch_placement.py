@@ -283,7 +283,7 @@ def get_transformed_patch(grid, patch, image_size):
     return transformed_patch
     
 
-def place_patch(image, patch, transformation_matrix):
+def place_patch(image, patch, transformation_matrix, random_perspection=True):
     """"
     Place all pixel values of the patch at the correct calculated position in the original image.
     Parameters:
@@ -347,13 +347,21 @@ def place_patch(image, patch, transformation_matrix):
     bit_mask = grid_sample(mask, affine_grid, align_corners=False, padding_mode='zeros').bool()
     transformed_patch = grid_sample(patch, affine_grid, align_corners=False, padding_mode='zeros')
 
-    # random_rotations = RandomPerspective(distortion_scale=0.7, p=1.0)
+    if random_perspection:
+        random_rotations = RandomPerspective(distortion_scale=0.2, p=0.9)
+        perspected_both = random_rotations(torch.cat([transformed_patch, bit_mask])) # apply same transformation to patch and bit mask
+        perspected_patch, perspected_mask = torch.split(perspected_both, len(transformation_matrix)) # split into patch batch and mask batch
 
-    # first erase all pixel values in the original image in the area of the patch
-    modified_image = image * ~bit_mask
-    # transformed_patch *= bit_mask
-    # and now replace these values with the transformed patch
-    modified_image += transformed_patch
+        # first erase all pixel values in the original image in the area of the patch
+        modified_image = image * ~perspected_mask.bool()
+        # transformed_patch *= bit_mask
+        # and now replace these values with the transformed patch
+        modified_image += perspected_patch
+    else:
+        # first erase all pixel values in the original image in the area of the patch
+        modified_image = image * ~bit_mask
+        # and now replace these values with the transformed patch
+        modified_image += transformed_patch
 
     return modified_image
 
