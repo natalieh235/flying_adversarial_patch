@@ -8,12 +8,14 @@ from pathlib import Path
 
 from tqdm import trange, tqdm
 
-from util import gen_noisy_transformations
+from util import gen_noisy_transformations, norm_transformation, get_transformation
 
 from patch_placement import place_patch
 
 from torch.nn.functional import mse_loss
 
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10, path="eval/"):
 
@@ -80,7 +82,7 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
                      # target_losses.append(mse_loss(target_batch, pred))
 
                     #target_losses.append(torch.min(mse_loss(target_batch, pred_v)))
-                    target_loss = torch.stack([torch.nn.functional.mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
+                    target_loss = torch.stack([mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
                     #print(target_loss)
                     target_losses.append(torch.min(target_loss)) # keep only the minimum loss 
 
@@ -102,7 +104,7 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
             if actual_loss < best_loss:
                 best_patch = patches_t.clone().detach()
                 best_position = positions_t.clone().detach()
-                print(best_position)
+                print(best_position.shape)
                 best_loss = actual_loss
         
     except KeyboardInterrupt:
@@ -132,7 +134,7 @@ if __name__=="__main__":
 
     lr_pos = settings['lr_pos']
     lr_patch = settings['lr_patch']
-    num_hl_iter = 10#settings['num_hl_iter']
+    num_hl_iter = 2#settings['num_hl_iter']
     num_pos_restarts = settings['num_pos_restarts']
     num_pos_epochs = settings['num_pos_epochs']
     num_patch_epochs = settings['num_patch_epochs']
@@ -216,6 +218,42 @@ if __name__=="__main__":
 
     # patch = patch_start.clone()
 
+    figures = []
+
     for train_iteration in trange(num_hl_iter):
         patches, loss_patch, positions = multi_joint(train_set, patches, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
 
+        #print(patches.shape, loss_patch.shape, positions.shape)
+
+        image, _ =  train_set.dataset.__getitem__(0)
+        image = image.unsqueeze(0).to(device) / 255.
+
+        figures_per_target = []
+        for target, position in zip(targets, positions):
+            #print(position.shape)
+           
+            images_per_target = []
+            for patch, pos in zip(patches, position):
+                #print(patch.shape, pos.shape)
+                sf_norm, tx_norm, ty_norm = norm_transformation(*pos)
+                #print(sf_norm, tx_norm, ty_norm)
+
+                mod_img = place_patch(image, patch.unsqueeze(0), get_transformation(sf_norm, tx_norm, ty_norm))
+                images_per_target.append(mod_img.detach().cpu().numpy()[0][0])
+                
+            fig, axs = plt.subplots(len(images_per_target))
+            for i, img in enumerate(images_per_target):
+                axs[i].imshow(img, cmap='gray')
+
+            figures_per_target.append(fig)
+
+        figures.append(figures_per_target)
+    
+
+    # with PdfPages(Path(path) / 'result.pdf') as pdf:
+
+    #     print("2:", len(figures))
+    #     for epoch_figure in figures:
+    #         print("4:", len(epoch_figure))
+    #         for target_figure in epoch_figure:
+    #             pdf.savefig(target_figure)

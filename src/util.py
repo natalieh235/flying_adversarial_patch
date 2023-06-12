@@ -235,29 +235,73 @@ def plot_saliency(img, gt, model):
 
     return fig
 
-def plot_patch(patch, image, title='Plot', save=False, path='./'):
 
-    img_min, img_max = patch.batch_place(image)
+def get_transformation(sf, tx, ty):
+    translation_vector = torch.stack([tx, ty]).unsqueeze(0) #torch.zeros([1], device=tx.device)]).unsqueeze(0)
 
-    f = plt.figure(constrained_layout=True, figsize=(10, 4))
-    subfigs = f.subfigures(1, 2, width_ratios=[1, 3])
-    fig_patch = subfigs[0].subplots(1,1)
-    fig_patch.imshow(patch.patch[0][0].detach().cpu().numpy(), cmap='gray')
-    subfigs[0].suptitle('Patch', fontsize='x-large')
+    eye = torch.eye(2, 2).unsqueeze(0).to(sf.device)
+    scale = eye * sf
 
-    subfigs[1].suptitle('placed', fontsize='x-large')
-    fig_placed = subfigs[1].subplots(1,2)
-    fig_placed[0].imshow(img_min[0][0].detach().cpu().numpy(), cmap='gray')
-    fig_placed[0].set_title('min direction')
-    fig_placed[1].imshow(img_max[0][0].detach().cpu().numpy(), cmap='gray')
-    fig_placed[1].set_title('max direction')
+    # print(scale.shape, translation_vector.shape)
 
-    f.suptitle(title, fontsize='xx-large')
+    transformation_matrix = torch.cat([scale, translation_vector], dim=2)
+    return transformation_matrix.float()
+
+def norm_transformation(sf, tx, ty):
+    tx_tanh = torch.tanh(tx)
+    ty_tanh = torch.tanh(ty)
+    scaling_norm = 0.1 * (torch.tanh(sf) + 1) + 0.3 # normalizes scaling factor to range [0.3, 0.5]
+
+    return scaling_norm, tx_tanh, ty_tanh
+
+
+def gen_noisy_transformations(batch_size, sf, tx, ty):
+    noisy_transformation_matrix = []
+    for i in range(batch_size):
+        sf_n = sf + np.random.normal(0.0, 0.1)
+        tx_n = tx + np.random.normal(0.0, 0.1)
+        ty_n = ty + np.random.normal(0.0, 0.1)
+
+        scale_norm, tx_norm, ty_norm = norm_transformation(sf_n, tx_n, ty_n)
+        matrix = get_transformation(scale_norm, tx_norm, ty_norm)
+
+        # random_yaw = np.deg2rad(np.random.normal(-10, 10))
+        # random_pitch = np.deg2rad(np.random.normal(-5, 5))
+        # random_roll = np.deg2rad(np.random.normal(-5, 5))
+        #noisy_rotation = torch.tensor(get_rotation(random_yaw, random_pitch, random_roll)).float().to(matrix.device)
+
+        #matrix[..., :3, :3] = noisy_rotation @ matrix[..., :3, :3]
+
+        noisy_transformation_matrix.append(matrix)
     
-    if save:
-        plt.savefig(path+title+'.jpg', transparent=False)
-        plt.close()
-    else: 
-        return f
+    return torch.cat(noisy_transformation_matrix)
+
+
+
+
+# def plot_patch(patch, image, title='Plot', save=False, path='./'):
+
+#     img_min, img_max = patch.batch_place(image)
+
+#     f = plt.figure(constrained_layout=True, figsize=(10, 4))
+#     subfigs = f.subfigures(1, 2, width_ratios=[1, 3])
+#     fig_patch = subfigs[0].subplots(1,1)
+#     fig_patch.imshow(patch.patch[0][0].detach().cpu().numpy(), cmap='gray')
+#     subfigs[0].suptitle('Patch', fontsize='x-large')
+
+#     subfigs[1].suptitle('placed', fontsize='x-large')
+#     fig_placed = subfigs[1].subplots(1,2)
+#     fig_placed[0].imshow(img_min[0][0].detach().cpu().numpy(), cmap='gray')
+#     fig_placed[0].set_title('min direction')
+#     fig_placed[1].imshow(img_max[0][0].detach().cpu().numpy(), cmap='gray')
+#     fig_placed[1].set_title('max direction')
+
+#     f.suptitle(title, fontsize='xx-large')
+    
+#     if save:
+#         plt.savefig(path+title+'.jpg', transparent=False)
+#         plt.close()
+#     else: 
+#         return f
 
 
