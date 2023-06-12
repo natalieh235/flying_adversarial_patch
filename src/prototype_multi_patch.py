@@ -18,7 +18,8 @@ from torch.nn.functional import mse_loss
 def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10, path="eval/"):
 
     patches_t = patches.clone().requires_grad_(True)
-    positions_t = positions.clone().requires_grad_(True)
+    positions_t = positions.clone().transpose(0, 1).requires_grad_(True)
+    #print(positions_t.shape)
 
     opt = torch.optim.Adam([patches_t, positions_t], lr=lr)
 
@@ -36,13 +37,23 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
 
                 target_losses = []
                 for position, target in zip(positions_t, targets):
-                    scale_factor, tx, ty = position
-                    noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
-                    #patch_batch = torch.cat([patch_t for _ in range(len(batch))])
-                    patch_batches = torch.cat([x.repeat(len(batch), 1, 1, 1) for x in patches_t]) # get batch_sized batches of each patch in patches, size should be batch_size*num_patches
-                    print(patch_batches.shape)
+                    #scale_factor, tx, ty = position.transpose(1, 0)
 
-                    mod_img = place_patch(batch.clone(), patch_batches, noisy_transformations) 
+                    #print(scale_factor.shape)
+                    
+                    # generate a transformation matrix of batch_size for each of the num_patches positions
+                    # this way, each patch will be placed at it's own optimized position with a bit of noise added
+                    # shape is should be (num_patches, batch_size, 2, 3)
+                    noisy_transformations = torch.stack([gen_noisy_transformations(len(batch), scale_factor, tx, ty) for scale_factor, tx, ty in zip(*position.transpose(1, 0))])
+                    # print(noisy_transformations.shape)
+                    #patch_batch = torch.cat([patch_t for _ in range(len(batch))])
+                    
+                    patch_batches = torch.cat([x.repeat(len(batch), 1, 1, 1) for x in patches_t]) # get batch_sized batches of each patch in patches, size should be batch_size*num_patches
+                    batch_multi = batch.clone().repeat(len(patches_t), 1, 1, 1)
+                    transformations_multi = noisy_transformations.view(len(patches_t)*len(batch), 2, 3) # reshape transformation matrices
+                    #print(transformations_multi.shape)
+
+                    mod_img = place_patch(batch_multi, patch_batches, transformations_multi) 
                     mod_img *= 255. # convert input images back to range [0-255.]
 
                     # add noise to patch+background
@@ -69,12 +80,14 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
                      # target_losses.append(mse_loss(target_batch, pred))
 
                     #target_losses.append(torch.min(mse_loss(target_batch, pred_v)))
-                    losses = torch.stack([torch.nn.functional.mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
-                    target_losses.append(torch.min(losses)) # keep only the minimum loss 
+                    target_loss = torch.stack([torch.nn.functional.mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
+                    #print(target_loss)
+                    target_losses.append(torch.min(target_loss)) # keep only the minimum loss 
 
                    
 
                 loss = torch.sum(torch.stack(target_losses))    # sum for all K targets
+                # 7(loss)
                 actual_loss += loss.clone().detach()
 
                 losses.append(loss.clone().detach())
@@ -89,6 +102,7 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
             if actual_loss < best_loss:
                 best_patch = patches_t.clone().detach()
                 best_position = positions_t.clone().detach()
+                print(best_position)
                 best_loss = actual_loss
         
     except KeyboardInterrupt:
@@ -118,7 +132,7 @@ if __name__=="__main__":
 
     lr_pos = settings['lr_pos']
     lr_patch = settings['lr_patch']
-    num_hl_iter = settings['num_hl_iter']
+    num_hl_iter = 10#settings['num_hl_iter']
     num_pos_restarts = settings['num_pos_restarts']
     num_pos_epochs = settings['num_pos_epochs']
     num_patch_epochs = settings['num_patch_epochs']
@@ -172,7 +186,7 @@ if __name__=="__main__":
     # if settings['patch']['mode'] == 'white':
     #     patch_start = torch.ones(1, 1, 300, 320).to(device)
 
-    # multi patch
+    # multi patch, random only atm
     patches = torch.rand(4, 1, 96, 160).to(device)
 
     optimization_pos_losses = []
@@ -196,7 +210,12 @@ if __name__=="__main__":
             positions.append(torch.stack([scale_factor, tx, ty]))
         positions = torch.stack(positions)
 
+    positions = positions.repeat(len(patches), 1, 1, 1)  # repeat initial positions for amount of patches
+
     optimization_pos_vectors.append(positions)
 
     # patch = patch_start.clone()
+
+    for train_iteration in trange(num_hl_iter):
+        patches, loss_patch, positions = multi_joint(train_set, patches, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
 
