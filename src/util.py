@@ -165,7 +165,7 @@ class FrontnetQuantizedModel(torch.nn.Module):
 
     #     return [torch.cat(batch_x), torch.cat(batch_y), torch.cat(batch_z), torch.cat(batch_phi)]
 
-def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_workers = 1, train=True, train_set_size=0.9, IMRC=False):
+def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_workers = 1, train=True, train_set_size=0.9, IMRC=True):
     """
     Loads a dataset from the given path. 
     Parameters
