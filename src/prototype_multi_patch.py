@@ -32,13 +32,16 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
 
         for epoch in range(epochs):
 
+            stats = np.zeros((len(patches_t), len(targets)))
+            stats_p = np.zeros((len(patches_t), len(targets)))
+
             actual_loss = torch.tensor(0.).to(patches.device)
             for _, data in enumerate(dataset):
                 batch, _ = data
                 batch = batch.to(patches.device) / 255. # limit images to range [0-1]
 
                 target_losses = []
-                for position, target in zip(positions_t, targets):
+                for k, (position, target) in enumerate(zip(positions_t, targets)):
                     #scale_factor, tx, ty = position.transpose(1, 0)
 
                     #print(scale_factor.shape)
@@ -83,8 +86,15 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
 
                     #target_losses.append(torch.min(mse_loss(target_batch, pred_v)))
                     target_loss = torch.stack([mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
+                    stats[:, k] += target_loss.detach().cpu().numpy()
                     #print(target_loss)
-                    target_losses.append(torch.min(target_loss)) # keep only the minimum loss 
+                    #target_losses.append(torch.min(target_loss)) # keep only the minimum loss 
+                    probabilities = torch.nn.functional.softmin(target_loss, dim=0)
+                    stats_p[:, k] += probabilities.detach().cpu().numpy()
+                    #print(probabilities)
+                    expectation = probabilities.dot(target_loss)
+                    #print(expectation)
+                    target_losses.append(expectation)
 
                    
 
@@ -101,6 +111,8 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
                 patches_t.data.clamp_(0., 1.)
             actual_loss /= len(dataset)
             print("epoch {} loss {}".format(epoch, actual_loss))
+            print("stats loss:", stats/len(dataset))
+            print("stats probabilities:", stats_p/len(dataset))
             if actual_loss < best_loss:
                 best_patch = patches_t.clone().detach()
                 best_position = positions_t.clone().detach()
@@ -134,7 +146,7 @@ if __name__=="__main__":
 
     lr_pos = settings['lr_pos']
     lr_patch = settings['lr_patch']
-    num_hl_iter = 2#settings['num_hl_iter']
+    num_hl_iter = settings['num_hl_iter']
     num_pos_restarts = settings['num_pos_restarts']
     num_pos_epochs = settings['num_pos_epochs']
     num_patch_epochs = settings['num_patch_epochs']
@@ -189,7 +201,7 @@ if __name__=="__main__":
     #     patch_start = torch.ones(1, 1, 300, 320).to(device)
 
     # multi patch, random only atm
-    patches = torch.rand(4, 1, 96, 160).to(device)
+    patches = torch.rand(2, 1, 96, 160).to(device)
 
     optimization_pos_losses = []
     optimization_pos_vectors = []
@@ -218,42 +230,50 @@ if __name__=="__main__":
 
     # patch = patch_start.clone()
 
-    figures = []
+    # figures = []
 
-    for train_iteration in trange(num_hl_iter):
-        patches, loss_patch, positions = multi_joint(train_set, patches, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+    with PdfPages(Path(path) / 'result.pdf') as pdf:
+        for train_iteration in trange(num_hl_iter):
+            patches, loss_patch, positions = multi_joint(train_set, patches, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
 
-        #print(patches.shape, loss_patch.shape, positions.shape)
+            #print(patches.shape, loss_patch.shape, positions.shape)
 
-        image, _ =  train_set.dataset.__getitem__(0)
-        image = image.unsqueeze(0).to(device) / 255.
+            image, _ =  train_set.dataset.__getitem__(0)
+            image = image.unsqueeze(0).to(device) / 255.
 
-        figures_per_target = []
-        for target, position in zip(targets, positions):
-            #print(position.shape)
-           
-            images_per_target = []
-            for patch, pos in zip(patches, position):
-                #print(patch.shape, pos.shape)
-                sf_norm, tx_norm, ty_norm = norm_transformation(*pos)
-                #print(sf_norm, tx_norm, ty_norm)
+            figures_per_target = []
+            fig, axs = plt.subplots(len(patches), len(targets))
+            for target_idx, (target, position) in enumerate(zip(targets, positions)):
+                #print(position.shape)
+            
+                images_per_target = []
+                for patch_idx, (patch, pos) in enumerate(zip(patches, position)):
+                    #print(patch.shape, pos.shape)
+                    sf_norm, tx_norm, ty_norm = norm_transformation(*pos)
+                    #print(sf_norm, tx_norm, ty_norm)
 
-                mod_img = place_patch(image, patch.unsqueeze(0), get_transformation(sf_norm, tx_norm, ty_norm))
-                images_per_target.append(mod_img.detach().cpu().numpy()[0][0])
-                
-            fig, axs = plt.subplots(len(images_per_target))
-            for i, img in enumerate(images_per_target):
-                axs[i].imshow(img, cmap='gray')
+                    mod_img = place_patch(image, patch.unsqueeze(0), get_transformation(sf_norm, tx_norm, ty_norm), random_perspection=False)
+                    axs[patch_idx, target_idx].imshow(mod_img.detach().cpu().numpy()[0][0], cmap='gray')
+                    #images_per_target.append(mod_img.detach().cpu().numpy()[0][0])
 
-            figures_per_target.append(fig)
 
-        figures.append(figures_per_target)
+            pdf.savefig(fig)
+            plt.close(fig)        
+                # fig, axs = plt.subplots(len()
+                # for i, img in enumerate(images_per_target):
+                #     axs[i].imshow(img, cmap='gray')
+
+                # figures_per_target.append(fig)
+
     
 
-    # with PdfPages(Path(path) / 'result.pdf') as pdf:
+    
 
-    #     print("2:", len(figures))
-    #     for epoch_figure in figures:
-    #         print("4:", len(epoch_figure))
-    #         for target_figure in epoch_figure:
-    #             pdf.savefig(target_figure)
+        # for fig in figures:
+            
+            # fig.close()
+        # print("2:", len(figures))
+        # for epoch_figure in figures:
+        #     # print("4:", len(epoch_figure))
+        #     for target_figure in epoch_figure:
+        #         pdf.savefig(target_figure)
