@@ -165,7 +165,7 @@ class FrontnetQuantizedModel(torch.nn.Module):
 
     #     return [torch.cat(batch_x), torch.cat(batch_y), torch.cat(batch_z), torch.cat(batch_phi)]
 
-def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_workers = 1, train=True, train_set_size=0.9):
+def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_workers = 1, train=True, train_set_size=0.9, IMRC=False):
     """
     Loads a dataset from the given path. 
     Parameters
@@ -181,9 +181,30 @@ def load_dataset(path, batch_size = 32, shuffle = False, drop_last = True, num_w
             This ensures that all returned batches are of the same size.
         num_workers
             Set the number of workers.
+        train
+            If set to True, the function will return the train set. If set to 
+            False, the test set will be returned instead.
+        train_set_size
+            Set the ratio of total images included in the train set.
+        IMRC
+            If set to True, the datasets will include images from our flight 
+            space acquired with our camera configuration. Further information
+            on dataset acquisition is provided in the README. 
     """
     # load images and labels from the stored dataset
     [images, labels] = DataProcessor.ProcessTestData(path)
+
+    # if training data should be extended by our custom dataset, set IMRC to True
+    if IMRC:
+        import pickle
+        with open("misc/IMRC_images.pickle", "rb") as f:
+            imrc_data = pickle.load(f)
+
+        imrc_images = imrc_data['x']
+        imrc_labels = imrc_data['y']
+
+        images = np.concatenate([images, imrc_images])
+        labels = np.concatenate([labels, imrc_labels])
 
     rng = np.random.default_rng(1749)
 
