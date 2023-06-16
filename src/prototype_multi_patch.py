@@ -29,6 +29,8 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
 
     try:
         best_loss = np.inf
+        best_stats = None
+        best_stats_p = None
 
         for epoch in range(epochs):
 
@@ -88,15 +90,15 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
                     target_loss = torch.stack([mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
                     stats[:, k] += target_loss.detach().cpu().numpy()
                     #print(target_loss)
-                    #target_losses.append(torch.min(target_loss)) # keep only the minimum loss 
+                    # # variant1
+                    # target_losses.append(torch.min(target_loss)) # keep only the minimum loss
+
+                    # variant2
                     probabilities = torch.nn.functional.softmin(target_loss, dim=0)
                     stats_p[:, k] += probabilities.detach().cpu().numpy()
-                    #print(probabilities)
-                    expectation = probabilities.dot(target_loss)
-                    #print(expectation)
-                    target_losses.append(expectation)
-
-                   
+                    # expectation = probabilities.dot(target_loss)
+                    # target_losses.append(expectation)
+                    target_losses.append(torch.sum(target_loss))
 
                 loss = torch.sum(torch.stack(target_losses))    # sum for all K targets
                 # 7(loss)
@@ -116,13 +118,14 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
             if actual_loss < best_loss:
                 best_patch = patches_t.clone().detach()
                 best_position = positions_t.clone().detach()
-                print(best_position.shape)
                 best_loss = actual_loss
+                best_stats = stats / len(dataset)
+                best_stats_p = stats_p / len(dataset)
         
     except KeyboardInterrupt:
         print("Aborting optimization...")
 
-    return best_patch, best_loss, best_position
+    return best_patch, best_loss, best_position, best_stats, best_stats_p
 
 
 
@@ -201,7 +204,8 @@ if __name__=="__main__":
     #     patch_start = torch.ones(1, 1, 300, 320).to(device)
 
     # multi patch, random only atm
-    patches = torch.rand(2, 1, 96, 160).to(device)
+    patches = torch.rand(1, 1, 96, 160).to(device)
+    patches[0,:,:,:] = torch.ones(1, 96, 160).to(device)
 
     optimization_pos_losses = []
     optimization_pos_vectors = []
@@ -214,17 +218,20 @@ if __name__=="__main__":
 
     # optimization_patches.append(patch_start)
 
-    if mode == "split" or mode == "hybrid" or mode == "fixed":
-        positions = torch.FloatTensor(len(targets), 3, 1).uniform_(-1., 1.).to(device)
-    else:
-        # start with placing the patch in the middle
-        scale_factor, tx, ty = torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device)
-        positions = []
-        for target_idx in range(len(targets)):
-            positions.append(torch.stack([scale_factor, tx, ty]))
-        positions = torch.stack(positions)
+    # if mode == "split" or mode == "hybrid" or mode == "fixed":
+    #     positions = torch.FloatTensor(len(targets), 3, 1).uniform_(-1., 1.).to(device)
+    # else:
+    #     # start with placing the patch in the middle
+    #     scale_factor, tx, ty = torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device)
+    #     positions = []
+    #     for target_idx in range(len(targets)):
+    #         positions.append(torch.stack([scale_factor, tx, ty]))
+    #     positions = torch.stack(positions)
 
-    positions = positions.repeat(len(patches), 1, 1, 1)  # repeat initial positions for amount of patches
+    # positions = positions.repeat(len(patches), 1, 1, 1)  # repeat initial positions for amount of patches
+
+    positions = torch.FloatTensor(len(patches), len(targets), 3, 1).uniform_(-1., 1.).to(device)
+
 
     optimization_pos_vectors.append(positions)
 
@@ -233,16 +240,22 @@ if __name__=="__main__":
     # figures = []
 
     with PdfPages(Path(path) / 'result.pdf') as pdf:
-        for train_iteration in trange(num_hl_iter):
-            patches, loss_patch, positions = multi_joint(train_set, patches, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+        train_losses = []
+        stats = []
+        stats_p = []
 
+        for train_iteration in trange(num_hl_iter):
+            patches, loss_patch, positions, stat, stat_p = multi_joint(train_set, patches, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            train_losses.append(loss_patch.detach().cpu().numpy())
+            stats.append(stat)
+            stats_p.append(stat_p)
             #print(patches.shape, loss_patch.shape, positions.shape)
 
             image, _ =  train_set.dataset.__getitem__(0)
             image = image.unsqueeze(0).to(device) / 255.
 
             figures_per_target = []
-            fig, axs = plt.subplots(len(patches), len(targets))
+            fig, axs = plt.subplots(len(patches), len(targets), squeeze=False)
             for target_idx, (target, position) in enumerate(zip(targets, positions)):
                 #print(position.shape)
             
@@ -265,9 +278,42 @@ if __name__=="__main__":
 
                 # figures_per_target.append(fig)
 
-    
+        # plot individual losses over iterations
+        stats = np.asarray(stats)
+        fig, axs = plt.subplots(len(patches), len(targets), sharex=True, sharey=True, squeeze=False)
+        fig.suptitle('Individual Training Losses')
+        for target_idx in range(len(targets)):
+            for patch_idx in range(len(patches)):
+                axs[patch_idx, target_idx].plot(stats[:,patch_idx,target_idx])
+        pdf.savefig(fig)
+        plt.close(fig)
 
-    
+        # plot individual probs over iterations
+        stats_p = np.asarray(stats_p)
+        fig, axs = plt.subplots(len(patches), len(targets), sharex=True, sharey=True, squeeze=False)
+        fig.suptitle('Individual Probabilities')
+        for target_idx in range(len(targets)):
+            for patch_idx in range(len(patches)):
+                axs[patch_idx, target_idx].plot(stats_p[:,patch_idx,target_idx])
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # plot individual expectation over iterations
+        fig, axs = plt.subplots(len(patches), len(targets), sharex=True, sharey=True, squeeze=False)
+        fig.suptitle('Individual Expectation')
+        for target_idx in range(len(targets)):
+            for patch_idx in range(len(patches)):
+                axs[patch_idx, target_idx].plot(stats_p[:,patch_idx,target_idx] * stats[:,patch_idx,target_idx])
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # Overall loss
+        fig, ax = plt.subplots(1, 1)
+        fig.suptitle('Training Loss')
+        ax.plot(train_losses)
+        pdf.savefig(fig)
+        plt.close(fig)
+
 
         # for fig in figures:
             
