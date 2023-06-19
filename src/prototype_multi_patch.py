@@ -44,23 +44,36 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
 
                 target_losses = []
                 for k, (position, target) in enumerate(zip(positions_t, targets)):
-                    #scale_factor, tx, ty = position.transpose(1, 0)
+                    # print(position.shape)
+                    #old version
+                    scale_factor, tx, ty = position[0]
+                    noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
+                    patch_batch = torch.cat([patches_t for _ in range(len(batch))])
 
-                    #print(scale_factor.shape)
-                    
-                    # generate a transformation matrix of batch_size for each of the num_patches positions
-                    # this way, each patch will be placed at it's own optimized position with a bit of noise added
-                    # shape is should be (num_patches, batch_size, 2, 3)
-                    noisy_transformations = torch.stack([gen_noisy_transformations(len(batch), scale_factor, tx, ty) for scale_factor, tx, ty in zip(*position.transpose(1, 0))])
-                    # print(noisy_transformations.shape)
-                    #patch_batch = torch.cat([patch_t for _ in range(len(batch))])
-                    
-                    patch_batches = torch.cat([x.repeat(len(batch), 1, 1, 1) for x in patches_t]) # get batch_sized batches of each patch in patches, size should be batch_size*num_patches
-                    batch_multi = batch.clone().repeat(len(patches_t), 1, 1, 1)
-                    transformations_multi = noisy_transformations.view(len(patches_t)*len(batch), 2, 3) # reshape transformation matrices
-                    #print(transformations_multi.shape)
+                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations) 
 
-                    mod_img = place_patch(batch_multi, patch_batches, transformations_multi) 
+
+                    # multi-version
+                    # #scale_factor, tx, ty = position.transpose(1, 0)
+
+                    # #print(scale_factor.shape)
+                    
+                    # # generate a transformation matrix of batch_size for each of the num_patches positions
+                    # # this way, each patch will be placed at it's own optimized position with a bit of noise added
+                    # # shape is should be (num_patches, batch_size, 2, 3)
+                    # noisy_transformations = torch.stack([gen_noisy_transformations(len(batch), scale_factor, tx, ty) for scale_factor, tx, ty in zip(*position.transpose(1, 0))])
+                    # # print(noisy_transformations.shape)
+                    # #patch_batch = torch.cat([patch_t for _ in range(len(batch))])
+                    
+                    # patch_batches = torch.cat([x.repeat(len(batch), 1, 1, 1) for x in patches_t]) # get batch_sized batches of each patch in patches, size should be batch_size*num_patches
+                    # batch_multi = batch.clone().repeat(len(patches_t), 1, 1, 1)
+                    # transformations_multi = noisy_transformations.view(len(patches_t)*len(batch), 2, 3) # reshape transformation matrices
+                    # #print(transformations_multi.shape)
+
+                    # mod_img = place_patch(batch_multi, patch_batches, transformations_multi) 
+
+
+
                     mod_img *= 255. # convert input images back to range [0-255.]
 
                     # add noise to patch+background
@@ -82,23 +95,29 @@ def multi_joint(dataset, patches, model, positions, targets, lr=3e-2, epochs=10,
                     mask = torch.isnan(target)
                     target = torch.where(mask, torch.tensor(0., dtype=torch.float32), target)
 
-                    target_batch = (pred_v * mask) + target
+                    # old version
+                    target_batch = (pred * mask) + target
 
-                     # target_losses.append(mse_loss(target_batch, pred))
+                    target_losses.append(mse_loss(target_batch, pred))
 
-                    #target_losses.append(torch.min(mse_loss(target_batch, pred_v)))
-                    target_loss = torch.stack([mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
-                    stats[:, k] += target_loss.detach().cpu().numpy()
-                    #print(target_loss)
-                    # # variant1
-                    # target_losses.append(torch.min(target_loss)) # keep only the minimum loss
+                    # new version
+                    # target_batch = (pred_v * mask) + target
 
-                    # variant2
-                    probabilities = torch.nn.functional.softmin(target_loss, dim=0)
-                    stats_p[:, k] += probabilities.detach().cpu().numpy()
-                    # expectation = probabilities.dot(target_loss)
-                    # target_losses.append(expectation)
-                    target_losses.append(torch.sum(target_loss))
+                    #  # target_losses.append(mse_loss(target_batch, pred))
+
+                    # #target_losses.append(torch.min(mse_loss(target_batch, pred_v)))
+                    # target_loss = torch.stack([mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
+                    # stats[:, k] += target_loss.detach().cpu().numpy()
+                    # #print(target_loss)
+                    # # # variant1
+                    # # target_losses.append(torch.min(target_loss)) # keep only the minimum loss
+
+                    # # variant2
+                    # probabilities = torch.nn.functional.softmin(target_loss, dim=0)
+                    # stats_p[:, k] += probabilities.detach().cpu().numpy()
+                    # # expectation = probabilities.dot(target_loss)
+                    # # target_losses.append(expectation)
+                    # target_losses.append(torch.sum(target_loss))
 
                 loss = torch.sum(torch.stack(target_losses))    # sum for all K targets
                 # 7(loss)
@@ -205,7 +224,7 @@ if __name__=="__main__":
 
     # multi patch, random only atm
     patches = torch.rand(1, 1, 96, 160).to(device)
-    patches[0,:,:,:] = torch.ones(1, 96, 160).to(device)
+    # patches[0,:,:,:] = torch.ones(1, 96, 160).to(device)
 
     optimization_pos_losses = []
     optimization_pos_vectors = []
@@ -218,19 +237,19 @@ if __name__=="__main__":
 
     # optimization_patches.append(patch_start)
 
-    # if mode == "split" or mode == "hybrid" or mode == "fixed":
-    #     positions = torch.FloatTensor(len(targets), 3, 1).uniform_(-1., 1.).to(device)
-    # else:
-    #     # start with placing the patch in the middle
-    #     scale_factor, tx, ty = torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device)
-    #     positions = []
-    #     for target_idx in range(len(targets)):
-    #         positions.append(torch.stack([scale_factor, tx, ty]))
-    #     positions = torch.stack(positions)
+    if mode == "split" or mode == "hybrid" or mode == "fixed":
+        positions = torch.FloatTensor(len(targets), 3, 1).uniform_(-1., 1.).to(device)
+    else:
+        # start with placing the patch in the middle
+        scale_factor, tx, ty = torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([0.0]).to(device)
+        positions = []
+        for target_idx in range(len(targets)):
+            positions.append(torch.stack([scale_factor, tx, ty]))
+        positions = torch.stack(positions)
 
-    # positions = positions.repeat(len(patches), 1, 1, 1)  # repeat initial positions for amount of patches
+    positions = positions.repeat(len(patches), 1, 1, 1)  # repeat initial positions for amount of patches
 
-    positions = torch.FloatTensor(len(patches), len(targets), 3, 1).uniform_(-1., 1.).to(device)
+    # positions = torch.FloatTensor(len(patches), len(targets), 3, 1).uniform_(-1., 1.).to(device)
 
 
     optimization_pos_vectors.append(positions)
@@ -250,6 +269,7 @@ if __name__=="__main__":
             stats.append(stat)
             stats_p.append(stat_p)
             #print(patches.shape, loss_patch.shape, positions.shape)
+            print(positions)
 
             image, _ =  train_set.dataset.__getitem__(0)
             image = image.unsqueeze(0).to(device) / 255.
@@ -263,7 +283,7 @@ if __name__=="__main__":
                 for patch_idx, (patch, pos) in enumerate(zip(patches, position)):
                     #print(patch.shape, pos.shape)
                     sf_norm, tx_norm, ty_norm = norm_transformation(*pos)
-                    #print(sf_norm, tx_norm, ty_norm)
+                    print(sf_norm, tx_norm, ty_norm)
 
                     mod_img = place_patch(image, patch.unsqueeze(0), get_transformation(sf_norm, tx_norm, ty_norm), random_perspection=False)
                     axs[patch_idx, target_idx].imshow(mod_img.detach().cpu().numpy()[0][0], cmap='gray')
