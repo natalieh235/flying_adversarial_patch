@@ -154,15 +154,16 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                     # target_losses.append(torch.min(target_loss)) # keep only the minimum loss
 
                     # variant2
-                    probabilities = torch.nn.functional.softmin(target_loss, dim=0)
+                    prob_weight = 5.0
+                    probabilities = torch.nn.functional.softmin(target_loss * prob_weight, dim=0)
                     stats_p[:, target_idx] += probabilities.detach().cpu().numpy()
                     expectation = probabilities.dot(target_loss)
                     # debug
-                    if target_idx in [0,1]:
-                        target_losses.append(target_loss[0])
-                    else:
-                        target_losses.append(target_loss[1])
-                    # target_losses.append(expectation)
+                    # if target_idx in [0,1]:
+                    #     target_losses.append(target_loss[0])
+                    # else:
+                    #     target_losses.append(target_loss[1])
+                    target_losses.append(expectation)
 
                 loss = torch.sum(torch.stack(target_losses))
                 actual_loss += loss.clone().detach()
@@ -456,11 +457,11 @@ if __name__=="__main__":
     stats_all = []
     stats_p_all = []
 
-    if mode == "split" or mode == "hybrid" or mode == "fixed":
-        positions = torch.FloatTensor(len(targets), num_patches, 3, 1).uniform_(-1., 1.).to(device)
-    else:
-        # start with placing the patch in the middle
-        positions = torch.zeros(len(targets), num_patches, 3, 1).to(device)
+    # if mode == "split" or mode == "hybrid" or mode == "fixed":
+    positions = torch.FloatTensor(len(targets), num_patches, 3, 1).uniform_(-1., 1.).to(device)
+    # else:
+    #     # start with placing the patch in the middle
+    #     positions = torch.zeros(len(targets), num_patches, 3, 1).to(device)
 
     optimization_pos_vectors.append(positions)
 
@@ -506,13 +507,19 @@ if __name__=="__main__":
         train_loss = []
         test_loss = []
         for target_idx, target in enumerate(targets):
-            scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][0])
-            transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
+            train_losses_per_patch = []
+            test_losses_per_patch = []
+            for patch_idx in range(num_patches):
+                scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][patch_idx])
+                transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
-            train_loss.append(calc_eval_loss(train_set, patch[0:1], transformation_matrix, model, target))
-            test_loss.append(calc_eval_loss(test_set, patch[0:1], transformation_matrix, model, target))
+                train_losses_per_patch.append(calc_eval_loss(train_set, patch[patch_idx:patch_idx+1], transformation_matrix, model, target))
+                test_losses_per_patch.append(calc_eval_loss(test_set, patch[patch_idx:patch_idx+1], transformation_matrix, model, target))
+            # only store the best loss per target
+            train_loss.append(torch.min(torch.as_tensor(train_losses_per_patch)))
+            test_loss.append(torch.min(torch.as_tensor(test_losses_per_patch)))
 
-        train_losses.append(torch.stack(train_loss))    
+        train_losses.append(torch.stack(train_loss))
         test_losses.append(torch.stack(test_loss))
 
     #print(optimization_patch_losses)
