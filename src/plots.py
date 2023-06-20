@@ -99,17 +99,17 @@ def plot_results(path):
         pdf.savefig(fig)
         plt.close(fig)
 
-        if mode == 'hybrid' or mode == 'split':
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            ax.set_title(f'Loss position optimization for all iterations')
-            for target_idx, target in enumerate(targets):
-                ax.plot(optimization_pos_losses[target_idx], label=f'target {target}')
-            ax.set_xlabel('iteration')
-            ax.set_ylabel('MSE')
-            ax.legend()
-            pdf.savefig(fig)
-            plt.close(fig)
+        # if mode == 'hybrid' or mode == 'split':
+        #     fig = plt.figure()
+        #     ax = fig.add_subplot(111)
+        #     ax.set_title(f'Loss position optimization for all iterations')
+        #     for target_idx, target in enumerate(targets):
+        #         ax.plot(optimization_pos_losses[target_idx], label=f'target {target}')
+        #     ax.set_xlabel('iteration')
+        #     ax.set_ylabel('MSE')
+        #     ax.legend()
+        #     pdf.savefig(fig)
+        #     plt.close(fig)
 
         for target_idx, target in enumerate(targets):
             fig = plt.figure()

@@ -15,8 +15,8 @@ class Experiment2:
     def create_settings(self, base_settings, trials, mode, quantized):
         all_settings = []
         for i in range(trials):
-            for p in range(1, base_settings['num_patches']+1):
-                for j in range(1, len(base_settings['targets']['x'])+1):
+            for p in range(1, base_settings['num_patches']+1, 2):
+                for j in range(1, len(base_settings['targets']['x'])+1, 2):
                     s = copy.deepcopy(base_settings)
                     s['targets']['x'] = base_settings['targets']['x'][0:j]
                     s['targets']['y'] = base_settings['targets']['y'][0:j]

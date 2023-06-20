@@ -206,10 +206,15 @@ def targeted_attack_patch(dataset, patch, model, positions, assignment, targets,
 
     try:
         best_loss = np.inf
+        best_stats = None
+        best_stats_p = None
 
         for epoch in range(epochs):
 
             actual_loss = torch.tensor(0.).to(patch.device)
+            stats = np.zeros((len(patch_t), len(targets)))
+            stats_p = np.zeros((len(patch_t), len(targets)))
+
             for _, data in enumerate(dataset):
                 batch, _ = data
                 batch = batch.to(patch.device) / 255. # limit images to range [0-1]
@@ -227,6 +232,7 @@ def targeted_attack_patch(dataset, patch, model, positions, assignment, targets,
                     # this way, each patch will be placed at it's own optimized position with a bit of noise added
                     # shape is should be (num_patches, batch_size, 2, 3)
                     active_patches = assignment[:,target_idx]
+                    stats[np.invert(active_patches), target_idx] = np.inf
 
                     noisy_transformations = torch.stack([gen_noisy_transformations(len(batch), scale_factor, tx, ty) for scale_factor, tx, ty in position[active_patches]])
                     # print(noisy_transformations.shape)
@@ -272,7 +278,7 @@ def targeted_attack_patch(dataset, patch, model, positions, assignment, targets,
 
                     #target_losses.append(torch.min(mse_loss(target_batch, pred_v)))
                     target_loss = torch.stack([mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
-                    # stats[active_patches, target_idx] += target_loss.detach().cpu().numpy()
+                    stats[active_patches, target_idx] += target_loss.detach().cpu().numpy()
                     #print(target_loss)
                     # # variant1
                     # target_losses.append(torch.min(target_loss)) # keep only the minimum loss
@@ -280,7 +286,7 @@ def targeted_attack_patch(dataset, patch, model, positions, assignment, targets,
                     # variant2
                     prob_weight = 5.0
                     probabilities = torch.nn.functional.softmin(target_loss * prob_weight, dim=0)
-                    # stats_p[active_patches, target_idx] += probabilities.detach().cpu().numpy()
+                    stats_p[active_patches, target_idx] += probabilities.detach().cpu().numpy()
                     expectation = probabilities.dot(target_loss)
                     # debug
                     # if target_idx in [0,1]:
@@ -302,16 +308,22 @@ def targeted_attack_patch(dataset, patch, model, positions, assignment, targets,
 
                 #optimized_patches.append(patch_t.clone().detach())
             actual_loss /= len(dataset)
+            stats /= len(dataset)
+            stats_p /= len(dataset)
             print("epoch {} loss {}".format(epoch, actual_loss))
+            print("stats loss:", stats)
+            print("stats probabilities:", stats_p)
             if actual_loss < best_loss:
                 best_patch = patch_t.clone().detach()
                 best_loss = actual_loss
+                best_stats = stats
+                best_stats_p = stats_p
         
     except KeyboardInterrupt:
         print("Aborting optimization...")    
 
     #losses = torch.stack(losses)
-    return best_patch, best_loss#, losses
+    return best_patch, best_loss, best_stats, best_stats_p
 
 def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_start=False, tx_start=0., ty_start=0., sf_start=0.1, num_restarts=50, epochs=5, path="eval/targeted/"): 
     try: 
@@ -527,7 +539,9 @@ if __name__=="__main__":
 
         if mode == "split" or mode == "fixed":
             print("Optimizing patch...")
-            patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            patch, loss_patch, stats, stats_p = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            stats_all.append(stats)
+            stats_p_all.append(stats_p)
         elif mode == "joint" or mode == "hybrid":
             patch, loss_patch, positions, stats, stats_p = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
             optimization_pos_vectors.append(positions)
@@ -628,33 +642,45 @@ if __name__=="__main__":
     boxplot_data = []
     #target_mask = torch.tensor(target_mask).to(patch.device)
     for target_idx, target in enumerate(targets):
-        scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][0])
-        transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
         pred_base = model(test_batch.float() * 255.)
         pred_base = torch.stack(pred_base[:3]).squeeze(2).mT
         target_batch = target.repeat(len(test_batch), 1)
         target_batch = torch.where(torch.isnan(target_batch), pred_base, target_batch)
         loss_base = torch.tensor([mse_loss(target_batch[i], pred_base[i]) for i in range(len(test_batch))])
 
-        mod_img = place_patch(test_batch, patch_start, transformation_matrix)
-        mod_img *= 255. # convert input images back to range [0-255.]
-        mod_img.clamp_(0., 255.)
-        pred_start_patch = model(mod_img.float())
-        pred_start_patch = torch.stack(pred_start_patch[:3]).squeeze(2).mT
-        target_batch = target.repeat(len(test_batch), 1)
-        target_batch = torch.where(torch.isnan(target_batch), pred_start_patch, target_batch)
-        loss_start_patch = torch.tensor([mse_loss(target_batch[i], pred_start_patch[i]) for i in range(len(test_batch))])
+        loss_start_patch_best = None
+        loss_start_patch_best_value = np.inf
+        loss_opt_patch_best = None
+        loss_opt_patch_best_value = np.inf
+        for patch_idx in range(num_patches):
+            scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][patch_idx])
+            transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
-        mod_img = place_patch(test_batch, patch[0:1], transformation_matrix)
-        mod_img *= 255. # convert input images back to range [0-255.]
-        mod_img.clamp_(0., 255.)
-        pred_opt_patch = model(mod_img.float())
-        pred_opt_patch = torch.stack(pred_opt_patch[:3]).squeeze(2).mT
-        target_batch = target.repeat(len(test_batch), 1)
-        target_batch = torch.where(torch.isnan(target_batch), pred_opt_patch, target_batch)
-        loss_opt_patch = torch.tensor([mse_loss(target_batch[i], pred_opt_patch[i]) for i in range(len(test_batch))])
+            mod_img = place_patch(test_batch, patch_start, transformation_matrix)
+            mod_img *= 255. # convert input images back to range [0-255.]
+            mod_img.clamp_(0., 255.)
+            pred_start_patch = model(mod_img.float())
+            pred_start_patch = torch.stack(pred_start_patch[:3]).squeeze(2).mT
+            target_batch = target.repeat(len(test_batch), 1)
+            target_batch = torch.where(torch.isnan(target_batch), pred_start_patch, target_batch)
+            loss_start_patch = torch.tensor([mse_loss(target_batch[i], pred_start_patch[i]) for i in range(len(test_batch))])
+            if torch.sum(loss_start_patch) < loss_start_patch_best_value:
+                loss_start_patch_best_value = torch.sum(loss_start_patch)
+                loss_start_patch_best = loss_start_patch
 
-        boxplot_data.append(torch.stack([loss_base.detach().cpu(), loss_start_patch.detach().cpu(), loss_opt_patch.detach().cpu()]))
+            mod_img = place_patch(test_batch, patch[0:1], transformation_matrix)
+            mod_img *= 255. # convert input images back to range [0-255.]
+            mod_img.clamp_(0., 255.)
+            pred_opt_patch = model(mod_img.float())
+            pred_opt_patch = torch.stack(pred_opt_patch[:3]).squeeze(2).mT
+            target_batch = target.repeat(len(test_batch), 1)
+            target_batch = torch.where(torch.isnan(target_batch), pred_opt_patch, target_batch)
+            loss_opt_patch = torch.tensor([mse_loss(target_batch[i], pred_opt_patch[i]) for i in range(len(test_batch))])
+            if torch.sum(loss_opt_patch) < loss_opt_patch_best_value:
+                loss_opt_patch_best_value = torch.sum(loss_opt_patch)
+                loss_opt_patch_best = loss_opt_patch
+
+        boxplot_data.append(torch.stack([loss_base.detach().cpu(), loss_start_patch_best.detach().cpu(), loss_opt_patch_best.detach().cpu()]))
 
 
     np.save(path / 'boxplot_data.npy', torch.stack(boxplot_data).cpu().numpy())
