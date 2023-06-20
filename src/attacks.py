@@ -335,7 +335,7 @@ def targeted_attack_position(dataset, patch, model, target, lr=3e-2, include_sta
 
     return best_scaling, best_tx, best_ty, best_loss
 
-def calc_eval_loss(dataset, patch, transformation_matrix, model, target):
+def calc_eval_loss(dataset, patch, transformation_matrix, model, target, quantized=False):
     actual_loss = torch.tensor(0.).to(patch.device)
 
     mask = torch.isnan(target)
@@ -348,6 +348,8 @@ def calc_eval_loss(dataset, patch, transformation_matrix, model, target):
         mod_img = place_patch(batch, patch, transformation_matrix)
         mod_img *= 255. # convert input images back to range [0-255.]
         mod_img.clamp_(0., 255.)
+        if quantized:
+            mod_img.floor_()
 
         x, y, z, phi = model(mod_img)
 
@@ -509,8 +511,8 @@ if __name__=="__main__":
             scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][0])
             transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
-            train_loss.append(calc_eval_loss(train_set, patch[0:1], transformation_matrix, model, target))
-            test_loss.append(calc_eval_loss(test_set, patch[0:1], transformation_matrix, model, target))
+            train_loss.append(calc_eval_loss(train_set, patch[0:1], transformation_matrix, model, target, quantized=quantized))
+            test_loss.append(calc_eval_loss(test_set, patch[0:1], transformation_matrix, model, target, quantized=quantized))
 
         train_losses.append(torch.stack(train_loss))    
         test_losses.append(torch.stack(test_loss))
