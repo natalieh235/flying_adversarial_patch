@@ -196,7 +196,7 @@ def targeted_attack_joint(dataset, patch, model, positions, assignment, targets,
 
     return best_patch, best_loss, best_position, best_stats, best_stats_p
 
-def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, epochs=10, path="eval/"):
+def targeted_attack_patch(dataset, patch, model, positions, assignment, targets, lr=3e-2, epochs=10, path="eval/"):
 
     patch_t = patch.clone().requires_grad_(True)
     opt = torch.optim.Adam([patch_t], lr=lr)
@@ -215,13 +215,32 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
                 batch = batch.to(patch.device) / 255. # limit images to range [0-1]
 
                 target_losses = []
-                for position, target in zip(positions, targets):
-                    scale_factor, tx, ty = position
-                    noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
-                    patch_batch = torch.cat([patch_t for _ in range(len(batch))])
+                for target_idx, (position, target) in enumerate(zip(positions, targets)):
+                    # scale_factor, tx, ty = position
+                    # noisy_transformations = gen_noisy_transformations(len(batch), scale_factor, tx, ty)
+                    # patch_batch = torch.cat([patch_t for _ in range(len(batch))])
 
-                    mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations)
-                    mod_img *= 255.  # convert input images back to range [0-255.]
+                    # mod_img = place_patch(batch.clone(), patch_batch, noisy_transformations) 
+
+                    # multi-version
+                    # generate a transformation matrix of batch_size for each of the num_patches positions
+                    # this way, each patch will be placed at it's own optimized position with a bit of noise added
+                    # shape is should be (num_patches, batch_size, 2, 3)
+                    active_patches = assignment[:,target_idx]
+
+                    noisy_transformations = torch.stack([gen_noisy_transformations(len(batch), scale_factor, tx, ty) for scale_factor, tx, ty in position[active_patches]])
+                    # print(noisy_transformations.shape)
+                    #patch_batch = torch.cat([patch_t for _ in range(len(batch))])
+                    
+                    patch_batches = torch.cat([x.repeat(len(batch), 1, 1, 1) for x in patch_t[active_patches]]) # get batch_sized batches of each patch in patches, size should be batch_size*num_patches
+                    batch_multi = batch.clone().repeat(len(patch_t[active_patches]), 1, 1, 1)
+                    transformations_multi = noisy_transformations.view(len(patch_t[active_patches])*len(batch), 2, 3) # reshape transformation matrices
+                    #print(transformations_multi.shape)
+
+                    mod_img = place_patch(batch_multi, patch_batches, transformations_multi) 
+
+
+                    mod_img *= 255. # convert input images back to range [0-255.]
 
                     # add noise to patch+background
                     mod_img += torch.distributions.normal.Normal(loc=0.0, scale=10.).sample(mod_img.shape).to(patch.device)
@@ -240,12 +259,37 @@ def targeted_attack_patch(dataset, patch, model, positions, targets, lr=3e-2, ep
                     # only target x,y and z which were previously chosen, otherwise keep x/y/z to prediction
                     mask = torch.isnan(target)
                     target = torch.where(mask, torch.tensor(0., dtype=torch.float32), target)
-                    target_batch = (pred * mask) + target
-                    
-                    target_losses.append(mse_loss(target_batch, pred))
-                
-                
-                loss = torch.sum(torch.stack(target_losses))   
+
+                    # old
+                    # target_batch = (pred * mask) + target
+                    # target_losses.append(mse_loss(target_batch, pred))
+
+                    # new
+                    pred_v = pred.view(len(patch_t[active_patches]), len(batch), 3) # size : num_patches, batch_size, 3
+                    target_batch = (pred_v * mask) + target
+
+                     # target_losses.append(mse_loss(target_batch, pred))
+
+                    #target_losses.append(torch.min(mse_loss(target_batch, pred_v)))
+                    target_loss = torch.stack([mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
+                    # stats[active_patches, target_idx] += target_loss.detach().cpu().numpy()
+                    #print(target_loss)
+                    # # variant1
+                    # target_losses.append(torch.min(target_loss)) # keep only the minimum loss
+
+                    # variant2
+                    prob_weight = 5.0
+                    probabilities = torch.nn.functional.softmin(target_loss * prob_weight, dim=0)
+                    # stats_p[active_patches, target_idx] += probabilities.detach().cpu().numpy()
+                    expectation = probabilities.dot(target_loss)
+                    # debug
+                    # if target_idx in [0,1]:
+                    #     target_losses.append(target_loss[0])
+                    # else:
+                    #     target_losses.append(target_loss[1])
+                    target_losses.append(expectation)
+
+                loss = torch.sum(torch.stack(target_losses))
                 actual_loss += loss.clone().detach()
 
                 losses.append(loss.clone().detach())
@@ -483,8 +527,7 @@ if __name__=="__main__":
 
         if mode == "split" or mode == "fixed":
             print("Optimizing patch...")
-            # TODO: consider assignment here
-            patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
         elif mode == "joint" or mode == "hybrid":
             patch, loss_patch, positions, stats, stats_p = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
             optimization_pos_vectors.append(positions)
