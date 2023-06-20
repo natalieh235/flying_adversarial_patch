@@ -32,9 +32,12 @@ class Experiment2:
         result = defaultdict(list)
         for settings in all_settings:
             p = Path(settings['path'])
-            test_losses = np.load(p / 'losses_test.npy')
-            print(settings['num_patches'], len(settings['targets']['x']), np.mean(test_losses[-1]))
-            result[(settings['num_patches'], len(settings['targets']['x']))].append(test_losses[-1])
+            if (p / 'losses_test.npy').exists():
+                test_losses = np.load(p / 'losses_test.npy')
+                print(settings['num_patches'], len(settings['targets']['x']), np.mean(test_losses[-1]))
+                result[(settings['num_patches'], len(settings['targets']['x']))].append(test_losses[-1])
+            else:
+                print("Warning ", p / 'losses_test.npy', " not found")
 
         xs = defaultdict(list)
         ys = defaultdict(list)

@@ -68,7 +68,7 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
     
     return torch.cat(noisy_transformation_matrix)
 
-def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, epochs=10, path="eval/"):
+def targeted_attack_joint(dataset, patch, model, positions, assignment, targets, lr=3e-2, epochs=10, path="eval/"):
 
     patch_t = patch.clone().requires_grad_(True)
     positions_t = positions.clone().requires_grad_(True)
@@ -104,13 +104,16 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                     # generate a transformation matrix of batch_size for each of the num_patches positions
                     # this way, each patch will be placed at it's own optimized position with a bit of noise added
                     # shape is should be (num_patches, batch_size, 2, 3)
-                    noisy_transformations = torch.stack([gen_noisy_transformations(len(batch), scale_factor, tx, ty) for scale_factor, tx, ty in position])
+                    active_patches = assignment[:,target_idx]
+                    stats[np.invert(active_patches), target_idx] = np.inf
+
+                    noisy_transformations = torch.stack([gen_noisy_transformations(len(batch), scale_factor, tx, ty) for scale_factor, tx, ty in position[active_patches]])
                     # print(noisy_transformations.shape)
                     #patch_batch = torch.cat([patch_t for _ in range(len(batch))])
                     
-                    patch_batches = torch.cat([x.repeat(len(batch), 1, 1, 1) for x in patch_t]) # get batch_sized batches of each patch in patches, size should be batch_size*num_patches
-                    batch_multi = batch.clone().repeat(len(patch_t), 1, 1, 1)
-                    transformations_multi = noisy_transformations.view(len(patch_t)*len(batch), 2, 3) # reshape transformation matrices
+                    patch_batches = torch.cat([x.repeat(len(batch), 1, 1, 1) for x in patch_t[active_patches]]) # get batch_sized batches of each patch in patches, size should be batch_size*num_patches
+                    batch_multi = batch.clone().repeat(len(patch_t[active_patches]), 1, 1, 1)
+                    transformations_multi = noisy_transformations.view(len(patch_t[active_patches])*len(batch), 2, 3) # reshape transformation matrices
                     #print(transformations_multi.shape)
 
                     mod_img = place_patch(batch_multi, patch_batches, transformations_multi) 
@@ -141,14 +144,14 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                     # target_losses.append(mse_loss(target_batch, pred))
 
                     # new
-                    pred_v = pred.view(len(patch_t), len(batch), 3) # size : num_patches, batch_size, 3
+                    pred_v = pred.view(len(patch_t[active_patches]), len(batch), 3) # size : num_patches, batch_size, 3
                     target_batch = (pred_v * mask) + target
 
                      # target_losses.append(mse_loss(target_batch, pred))
 
                     #target_losses.append(torch.min(mse_loss(target_batch, pred_v)))
                     target_loss = torch.stack([mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
-                    stats[:, target_idx] += target_loss.detach().cpu().numpy()
+                    stats[active_patches, target_idx] += target_loss.detach().cpu().numpy()
                     #print(target_loss)
                     # # variant1
                     # target_losses.append(torch.min(target_loss)) # keep only the minimum loss
@@ -156,7 +159,7 @@ def targeted_attack_joint(dataset, patch, model, positions, targets, lr=3e-2, ep
                     # variant2
                     prob_weight = 5.0
                     probabilities = torch.nn.functional.softmin(target_loss * prob_weight, dim=0)
-                    stats_p[:, target_idx] += probabilities.detach().cpu().numpy()
+                    stats_p[active_patches, target_idx] += probabilities.detach().cpu().numpy()
                     expectation = probabilities.dot(target_loss)
                     # debug
                     # if target_idx in [0,1]:
@@ -457,17 +460,22 @@ if __name__=="__main__":
     stats_all = []
     stats_p_all = []
 
-    # if mode == "split" or mode == "hybrid" or mode == "fixed":
     positions = torch.FloatTensor(len(targets), num_patches, 3, 1).uniform_(-1., 1.).to(device)
-    # else:
-    #     # start with placing the patch in the middle
-    #     positions = torch.zeros(len(targets), num_patches, 3, 1).to(device)
 
     optimization_pos_vectors.append(positions)
 
     # num_patches x bitness x width x height
     patch = torch.stack([patch_start[0].clone() for _ in range(num_patches)])
     optimization_patches.append(patch.clone())
+
+    # assignment: we start by assigning all targets to all patches
+    A = np.ones((num_patches, len(targets)), dtype=np.bool8)
+
+    # # debug
+    # A = np.zeros((num_patches, len(targets)), dtype=np.bool8)
+    # A[0,0:2] = True
+    # A[1,2:4] = True
+    # print(A)
     
     for train_iteration in trange(num_hl_iter):
         
@@ -475,9 +483,10 @@ if __name__=="__main__":
 
         if mode == "split" or mode == "fixed":
             print("Optimizing patch...")
+            # TODO: consider assignment here
             patch, loss_patch = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
         elif mode == "joint" or mode == "hybrid":
-            patch, loss_patch, positions, stats, stats_p = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            patch, loss_patch, positions, stats, stats_p = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
             optimization_pos_vectors.append(positions)
 
             pos_losses.append(loss_patch)
@@ -489,14 +498,18 @@ if __name__=="__main__":
 
         if mode == "split" or mode == "hybrid":
             # optimize positions for multiple target values
-            positions = []
+            positions = torch.empty(len(targets), num_patches, 3, 1, device=device)
             for target_idx, target in enumerate(targets):
-                print(f"Optimizing position for target {target.cpu().numpy()}...")
-                scale_start, tx_start, ty_start = optimization_pos_vectors[-1][target_idx]
-                scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch, model, target, include_start=True, tx_start=tx_start, ty_start=ty_start, sf_start=scale_start, lr=lr_pos, num_restarts=num_pos_restarts, epochs=num_pos_epochs, path=path)
-                positions.append(torch.stack([scale_factor, tx, ty]))
-                pos_losses.append(loss_pos)
-            positions = torch.stack(positions)
+                for patch_idx in range(num_patches):
+                    scale_start, tx_start, ty_start = optimization_pos_vectors[-1][target_idx][patch_idx]
+                    if A[patch_idx, target_idx]:
+                        print(f"Optimizing position for patch {patch_idx} and target {target.cpu().numpy()}...")
+                        scale_factor, tx, ty, loss_pos  = targeted_attack_position(train_set, patch[patch_idx:patch_idx+1], model, target, include_start=True, tx_start=tx_start, ty_start=ty_start, sf_start=scale_start, lr=lr_pos, num_restarts=num_pos_restarts, epochs=num_pos_epochs, path=path)
+                        positions[target_idx, patch_idx] = torch.stack([scale_factor, tx, ty])
+                        pos_losses.append(loss_pos)
+                    else:
+                        positions[target_idx, patch_idx] = torch.stack([scale_start, tx_start, ty_start])
+                        pos_losses.append(torch.tensor(np.inf, device=device))
         elif mode == "fixed":
             pos_losses = [torch.tensor([0.])]
 
@@ -506,6 +519,7 @@ if __name__=="__main__":
 
         train_loss = []
         test_loss = []
+        cost = np.zeros((num_patches, len(targets)))
         for target_idx, target in enumerate(targets):
             train_losses_per_patch = []
             test_losses_per_patch = []
@@ -515,12 +529,17 @@ if __name__=="__main__":
 
                 train_losses_per_patch.append(calc_eval_loss(train_set, patch[patch_idx:patch_idx+1], transformation_matrix, model, target))
                 test_losses_per_patch.append(calc_eval_loss(test_set, patch[patch_idx:patch_idx+1], transformation_matrix, model, target))
+                cost[patch_idx, target_idx] = test_losses_per_patch[-1]
             # only store the best loss per target
             train_loss.append(torch.min(torch.as_tensor(train_losses_per_patch)))
             test_loss.append(torch.min(torch.as_tensor(test_losses_per_patch)))
 
         train_losses.append(torch.stack(train_loss))
         test_losses.append(torch.stack(test_loss))
+
+        if mode == "split" or mode == "hybrid":
+            # optimal assignment, since we have a 1:n matching, we can just assign each target the patch with the lowest loss
+            A = cost == np.min(cost, axis=0)
 
     #print(optimization_patch_losses)
     optimization_patches = torch.stack(optimization_patches)
