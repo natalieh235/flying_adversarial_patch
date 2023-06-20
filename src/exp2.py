@@ -15,14 +15,16 @@ class Experiment2:
     def create_settings(self, base_settings, trials, mode, quantized):
         all_settings = []
         for i in range(trials):
-            for j in range(1, len(base_settings['targets']['x'])+1):
-                s = copy.deepcopy(base_settings)
-                s['targets']['x'] = base_settings['targets']['x'][0:j]
-                s['targets']['y'] = base_settings['targets']['y'][0:j]
-                s['targets']['z'] = base_settings['targets']['z'][0:j]
-                s['path'] = "eval/exp2/" + str(j) + "_" + str(i)
-                s['quantized'] = quantized
-                all_settings.append(s)
+            for p in range(1, base_settings['num_patches']+1):
+                for j in range(1, len(base_settings['targets']['x'])+1):
+                    s = copy.deepcopy(base_settings)
+                    s['targets']['x'] = base_settings['targets']['x'][0:j]
+                    s['targets']['y'] = base_settings['targets']['y'][0:j]
+                    s['targets']['z'] = base_settings['targets']['z'][0:j]
+                    s['path'] = str(Path(base_settings['path']) / ("patch" + str(p) + "_target" + str(j) + "_trial" + str(i)))
+                    s['quantized'] = quantized
+                    s['num_patches'] = p
+                    all_settings.append(s)
         return all_settings
 
     def stats(self, all_settings):
@@ -30,21 +32,25 @@ class Experiment2:
         result = defaultdict(list)
         for settings in all_settings:
             p = Path(settings['path'])
-            test_losses = np.load(p / 'losses_test.npy')
-            print(len(settings['targets']['x']), np.mean(test_losses[-1]))
-            result[len(settings['targets']['x'])].append(test_losses[-1])
+            if (p / 'losses_test.npy').exists():
+                test_losses = np.load(p / 'losses_test.npy')
+                print(settings['num_patches'], len(settings['targets']['x']), np.mean(test_losses[-1]))
+                result[(settings['num_patches'], len(settings['targets']['x']))].append(test_losses[-1])
+            else:
+                print("Warning ", p / 'losses_test.npy', " not found")
 
-        xs = []
-        ys = []
-        yerr = []
-        for k, v in result.items():
+        xs = defaultdict(list)
+        ys = defaultdict(list)
+        yerr = defaultdict(list)
+        for (num_patches, num_targets), v in result.items():
+            print(num_patches, num_targets, v)
             all = np.stack(v)
-            print(k, "mean", np.mean(all), "std")
-            xs.append(k)
+            print(num_patches, num_targets, "mean", np.mean(all), "std", np.std(all))
+            xs[num_patches].append(num_targets)
 
             # loss_per_run = np.mean(all, axis=1)
-            ys.append(np.mean(all))
-            yerr.append(np.std(all))
+            ys[num_patches].append(np.mean(all))
+            yerr[num_patches].append(np.std(all))
 
         # change settings to match latex
         plt.rcParams.update({
@@ -58,11 +64,14 @@ class Experiment2:
         with PdfPages(p.parent / 'exp2.pdf') as pdf:
             fig, ax = plt.subplots(constrained_layout=True)
 
-            ax.plot(xs, ys)
-            ax.fill_between(xs, np.asarray(ys)+np.asarray(yerr), np.asarray(ys)-np.asarray(yerr), alpha=0.3)
+            for num_patches in xs.keys():
+                label = "1 patch" if num_patches == 1 else "{} patches".format(num_patches)
+                ax.plot(xs[num_patches], ys[num_patches], label=label)
+                ax.fill_between(xs[num_patches], np.asarray(ys[num_patches])+np.asarray(yerr[num_patches]), np.asarray(ys[num_patches])-np.asarray(yerr[num_patches]), alpha=0.3)
 
             ax.set_ylabel('Test Loss per Target [m]')
             ax.set_xlabel('Number of Targets per Patch')
+            ax.legend()
             # ax.set_ylim(0,0.2)
 
             # ax.bar(xs, ys)
