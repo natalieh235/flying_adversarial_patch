@@ -497,14 +497,15 @@ if __name__=="__main__":
         patch_start = np.load(settings['patch']['path'])
         patch_start = torch.from_numpy(patch_start).unsqueeze(0).unsqueeze(0).to(device) / 255.
         patch_start.clamp_(0., 1.)
+        patch_start = torch.stack([patch_start[0].clone() for _ in range(num_patches)])
 
     # or start from a random patch
     if settings['patch']['mode'] == 'random':
-        patch_start = torch.rand(1, 1, 96, 160).to(device)
+        patch_start = torch.rand(num_patches, 1, 96, 160).to(device)
 
     # or start from a white patch
     if settings['patch']['mode'] == 'white':
-        patch_start = torch.ones(1, 1, 96, 160).to(device)
+        patch_start = torch.ones(num_patches, 1, 96, 160).to(device)
 
     optimization_pos_losses = []
     optimization_pos_vectors = []
@@ -523,7 +524,7 @@ if __name__=="__main__":
     optimization_pos_vectors.append(positions)
 
     # num_patches x bitness x width x height
-    patch = torch.stack([patch_start[0].clone() for _ in range(num_patches)])
+    patch = patch_start.clone()
     optimization_patches.append(patch.clone())
 
     # assignment: we start by assigning all targets to all patches
@@ -658,7 +659,7 @@ if __name__=="__main__":
             scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][patch_idx])
             transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
-            mod_img = place_patch(test_batch, patch_start, transformation_matrix)
+            mod_img = place_patch(test_batch, patch_start[patch_idx:patch_idx+1], transformation_matrix)
             mod_img *= 255. # convert input images back to range [0-255.]
             mod_img.clamp_(0., 255.)
             pred_start_patch = model(mod_img.float())
@@ -670,7 +671,7 @@ if __name__=="__main__":
                 loss_start_patch_best_value = torch.sum(loss_start_patch)
                 loss_start_patch_best = loss_start_patch
 
-            mod_img = place_patch(test_batch, patch[0:1], transformation_matrix)
+            mod_img = place_patch(test_batch, patch[patch_idx:patch_idx+1], transformation_matrix)
             mod_img *= 255. # convert input images back to range [0-255.]
             mod_img.clamp_(0., 255.)
             pred_opt_patch = model(mod_img.float())

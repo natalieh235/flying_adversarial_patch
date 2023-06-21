@@ -292,7 +292,7 @@ def show_multi_placed(result, targets, mode):
     for run_idx, position in enumerate(result['positions']):
         scale_norm, tx_norm, ty_norm = position[:, -1, :]
         last_patch = result['patches'][run_idx][-1]
-        final_images.append(img_placed_patch(targets, last_patch, scale_norm, tx_norm, ty_norm))
+        final_images.append(img_placed_patch(targets, last_patch, scale_norm, tx_norm, ty_norm, p_idx))
     final_images = np.rollaxis(np.array(final_images), 1, 0)
     
     best_idx = np.argmin(np.mean(result['test_loss'][:, :, -1], axis=0))
@@ -376,11 +376,11 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid'], verbose=Fa
         
             boxplot_means.append(boxplot_mean)
 
-            # --- place patches at optimal position 
-            fig = show_multi_placed(results[mode], targets, mode)
-            #for fig in figures:
-            pdf.savefig(fig)
-            plt.close()  
+            # # --- place patches at optimal position 
+            # fig = show_multi_placed(results[mode], targets, mode)
+            # #for fig in figures:
+            # pdf.savefig(fig)
+            # plt.close()  
         
         # --- create box plots
         boxplot_means = np.rollaxis(np.array(boxplot_means), 1, 0)
@@ -398,8 +398,8 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid'], verbose=Fa
 
         plt.rcParams.update({"figure.figsize": (3, 2)})
 
-        boxplots_target_1 = gen_boxplots([*boxplot_means[0, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{1}$', yrange=[0.0, 0.3])
-        boxplots_target_2 = gen_boxplots([*boxplot_means[1, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{2}$', yrange=[0.0, 0.3])
+        boxplots_target_1 = gen_boxplots([*boxplot_means[0, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{1}$', yrange=[0.0, 1.0])
+        boxplots_target_2 = gen_boxplots([*boxplot_means[1, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{2}$', yrange=[0.0, 0.6])
         pdf.savefig(boxplots_target_1)
         pdf.savefig(boxplots_target_2)
         plt.close()

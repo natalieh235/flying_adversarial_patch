@@ -42,7 +42,11 @@ class Experiment1:
                 "figure.figsize": (5, 2),
                 "mathtext.fontset": 'stix'
         })
-        eval_multi_run(p.parent, list(result.keys())) 
+        eval_multi_run(p.parent, list(result.keys()))
+
+        # with PdfPages(p.parent / 'exp1.pdf') as pdf:
+        #     fig, ax = plt.subplots(constrained_layout=True)
+
 
 def main():
     e = Experiment1()
