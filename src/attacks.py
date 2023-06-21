@@ -68,7 +68,7 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
     
     return torch.cat(noisy_transformation_matrix)
 
-def targeted_attack_joint(dataset, patch, model, positions, assignment, targets, lr=3e-2, epochs=10, path="eval/"):
+def targeted_attack_joint(dataset, patch, model, positions, assignment, targets, lr=3e-2, epochs=10, path="eval/", prob_weight=5):
 
     patch_t = patch.clone().requires_grad_(True)
     positions_t = positions.clone().requires_grad_(True)
@@ -196,7 +196,7 @@ def targeted_attack_joint(dataset, patch, model, positions, assignment, targets,
 
     return best_patch, best_loss, best_position, best_stats, best_stats_p
 
-def targeted_attack_patch(dataset, patch, model, positions, assignment, targets, lr=3e-2, epochs=10, path="eval/"):
+def targeted_attack_patch(dataset, patch, model, positions, assignment, targets, lr=3e-2, epochs=10, path="eval/", prob_weight=5):
 
     patch_t = patch.clone().requires_grad_(True)
     opt = torch.optim.Adam([patch_t], lr=lr)
@@ -284,7 +284,6 @@ def targeted_attack_patch(dataset, patch, model, positions, assignment, targets,
                     # target_losses.append(torch.min(target_loss)) # keep only the minimum loss
 
                     # variant2
-                    prob_weight = 5.0
                     probabilities = torch.nn.functional.softmin(target_loss * prob_weight, dim=0)
                     stats_p[active_patches, target_idx] += probabilities.detach().cpu().numpy()
                     expectation = probabilities.dot(target_loss)
@@ -458,6 +457,7 @@ if __name__=="__main__":
     batch_size = settings['batch_size']
     mode = settings['mode']
     quantized = settings['quantized']
+    prob_weight = settings['prob_weight']
 
     # get target values in correct shape and move tensor to device
     targets = [values for _, values in settings['targets'].items()]
@@ -542,11 +542,11 @@ if __name__=="__main__":
 
         if mode == "split" or mode == "fixed":
             print("Optimizing patch...")
-            patch, loss_patch, stats, stats_p = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            patch, loss_patch, stats, stats_p = targeted_attack_patch(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path, prob_weight=prob_weight)
             stats_all.append(stats)
             stats_p_all.append(stats_p)
         elif mode == "joint" or mode == "hybrid":
-            patch, loss_patch, positions, stats, stats_p = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path)
+            patch, loss_patch, positions, stats, stats_p = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path, prob_weight=prob_weight)
             optimization_pos_vectors.append(positions)
 
             pos_losses.append(loss_patch)

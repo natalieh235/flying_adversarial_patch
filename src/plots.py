@@ -21,7 +21,6 @@ def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, p_idx, img_id
 
     base_img, ground_truth = train_set.dataset.__getitem__(img_idx)
     base_img = base_img.unsqueeze(0) / 255.
-    print(patch.shape)
     patch = torch.from_numpy(patch)
 
     scale_norm = torch.tensor(scale_norm)
@@ -32,7 +31,6 @@ def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, p_idx, img_id
     final_images = []
     for target_idx in range(len(targets)):
         transformation_matrix = get_transformation(scale_norm[target_idx,p_idx], tx_norm[target_idx,p_idx], ty_norm[target_idx,p_idx])
-        print(patch.shape, transformation_matrix.shape)
         
         final_images.append(place_patch(base_img, patch, transformation_matrix, random_perspection=False).numpy()[0])
 
@@ -61,7 +59,7 @@ def plot_results(path):
     # print(optimization_pos_losses.shape)
 
     all_sf, all_tx, all_ty = np.load(path / 'positions_norm.npy')
-    print(all_sf.shape)
+    # print(all_sf.shape)
     # print(all_tx.shape)
     # print(all_ty.shape)
     
@@ -156,27 +154,29 @@ def plot_results(path):
         #     pdf.savefig(fig)
         #     plt.close(fig)
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title(f'tx for all iterations')
-        for target_idx, target in enumerate(targets):
-            ax.plot(all_tx[:, target_idx, 0], label=f'target {target}')
-        ax.set_xlabel('iteration')
-        ax.set_ylabel('tx')
-        ax.legend()
-        pdf.savefig(fig)
-        plt.close(fig)
+        for p_idx in range(num_patches):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'tx for all iterations patch {p_idx}')
+            for target_idx, target in enumerate(targets):
+                ax.plot(all_tx[:, target_idx, p_idx], label=f'target {target}')
+            ax.set_xlabel('iteration')
+            ax.set_ylabel('tx')
+            ax.legend()
+            pdf.savefig(fig)
+            plt.close(fig)
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title(f'ty for all iterations')
-        for target_idx, target in enumerate(targets):
-            ax.plot(all_ty[:, target_idx, 0], label=f'target {target}')
-        ax.set_xlabel('iteration')
-        ax.set_ylabel('ty')
-        ax.legend()
-        pdf.savefig(fig)
-        plt.close(fig)
+        for p_idx in range(num_patches):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'ty for all iterations patch {p_idx}')
+            for target_idx, target in enumerate(targets):
+                ax.plot(all_ty[:, target_idx, p_idx], label=f'target {target}')
+            ax.set_xlabel('iteration')
+            ax.set_ylabel('ty')
+            ax.legend()
+            pdf.savefig(fig)
+            plt.close(fig)
 
         mean = np.mean(boxplot_data[:, :, 1])
         std = np.std(boxplot_data[:, :, 1])
