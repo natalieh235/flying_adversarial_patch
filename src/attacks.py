@@ -598,8 +598,20 @@ if __name__=="__main__":
         test_losses.append(torch.stack(test_loss))
 
         if mode == "split" or mode == "hybrid":
+            print("Assignment")
+            print("cost", cost)
             # optimal assignment, since we have a 1:n matching, we can just assign each target the patch with the lowest loss
+            # variant 1: deterministic assignment
             A = cost == np.min(cost, axis=0)
+            # variant 2: stochastic assignment
+            probabilities = torch.nn.functional.softmin(prob_weight * torch.as_tensor(cost), dim=0)
+            print("P", probabilities)
+            sample = torch.multinomial(probabilities.T, 1).flatten()
+            print("sample", sample)
+            A[:,:] = False
+            for target_idx in range(len(targets)):
+                A[sample[target_idx], target_idx] = True
+            print("A", A)
 
     #print(optimization_patch_losses)
     optimization_patches = torch.stack(optimization_patches)
