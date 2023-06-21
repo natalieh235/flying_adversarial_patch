@@ -9,6 +9,7 @@ targets:
   z : [ 0.0, 0.0, 0.0, -1.0] #, 1.0, -1.0, 1.0, -1.0, 1.0, 0.0]
 lr_pos: 0.001
 lr_patch: 0.001
+prob_weight: 5.0
 num_hl_iter: 25
 num_pos_restarts: 20
 num_pos_epochs: 1
