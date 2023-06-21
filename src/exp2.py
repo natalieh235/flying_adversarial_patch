@@ -58,7 +58,7 @@ class Experiment2:
             "font.family": "sans-serif",
             "font.sans-serif": "Helvetica",
             "font.size": 12,
-            "figure.figsize": (5, 2),
+            "figure.figsize": (5, 2.5),
         })
 
         with PdfPages(p.parent / 'exp2.pdf') as pdf:
@@ -67,7 +67,7 @@ class Experiment2:
             for num_patches in xs.keys():
                 label = "1 patch" if num_patches == 1 else "{} patches".format(num_patches)
                 ax.plot(xs[num_patches], ys[num_patches], label=label)
-                ax.fill_between(xs[num_patches], np.asarray(ys[num_patches])+np.asarray(yerr[num_patches]), np.asarray(ys[num_patches])-np.asarray(yerr[num_patches]), alpha=0.3)
+                ax.fill_between(xs[num_patches], np.asarray(ys[num_patches])+np.asarray(yerr[num_patches]), np.asarray(ys[num_patches])-np.asarray(yerr[num_patches]), alpha=0.15)
 
             ax.set_ylabel('Test Loss per Target [m]')
             ax.set_xlabel('Number of Targets per Patch')

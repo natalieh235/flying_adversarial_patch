@@ -398,8 +398,8 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid'], verbose=Fa
 
         plt.rcParams.update({"figure.figsize": (3, 2)})
 
-        boxplots_target_1 = gen_boxplots([*boxplot_means[0, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{1}$', yrange=[0.0, 1.0])
-        boxplots_target_2 = gen_boxplots([*boxplot_means[1, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{2}$', yrange=[0.0, 0.6])
+        boxplots_target_1 = gen_boxplots([*boxplot_means[0, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{1}$', yrange=[0.0, 0.3])
+        boxplots_target_2 = gen_boxplots([*boxplot_means[1, 1:, 2, :]], title="", labels=['joint', 'split', 'hybrid'], ylabel=r'Test loss [m] for $\bar\mathbf{p}^h_{2}$', yrange=[0.0, 0.3])
         pdf.savefig(boxplots_target_1)
         pdf.savefig(boxplots_target_2)
         plt.close()
