@@ -10,8 +10,8 @@ from crazyflie_py import *
 from crazyflie_py.uav_trajectory import Trajectory
 
 class Attack():
-    attacker_id = 231
-    victim_id = 4
+    attacker_id = 4
+    victim_id = 231
 
     def __init__(self):
         self.swarm = Crazyswarm()
@@ -21,30 +21,35 @@ class Attack():
         self.pose_a = None
         self.subscription_a = self.node.create_subscription(
                 PoseStamped,
-                f'cf/{self.attacker_id}/pose',
-                partial(self.pose_callback, self.pose_a),
+                f'cf{self.attacker_id}/pose',
+                partial(self.pose_callback, "a"),
                 10)
         
         self.pose_v = None
         self.subscription_v = self.node.create_subscription(
                 PoseStamped,
-                f'cf/{self.victim_id}/pose',
-                partial(self.pose_callback, self.pose_v),
+                f'cf{self.victim_id}/pose',
+                partial(self.pose_callback, "v"),
                 10)
         
-        self.cf_a = self.swarm.allcfs.crazyflies[self.attacker_id]
-        self.cf_v = self.swarm.allcfs.crazyflies[self.victim_id]
+        self.cf_a = self.swarm.allcfs.crazyfliesById[self.attacker_id]
+        self.cf_v = self.swarm.allcfs.crazyfliesById[self.victim_id]
 
         
     def pose_callback(self, store_into, msg: PoseStamped):
-        print(msg)
+        # print(msg)
         # store the latest pose
-        store_into = msg
+        if store_into == 'a':
+            self.pose_a = msg
+        else:
+            self.pose_v = msg
 
     def compute_attacker_pose(self, pos_v_desired):
         # can use
         # self.pose_a: current pose of attacker
         # self.pose_v: current pose of victim
+        # print(self.pose_a)
+        # print(self.pose_v)
 
         # return desired pos and yaw for the attacker
         return pos_v_desired, 0
@@ -52,10 +57,10 @@ class Attack():
     def run(self):
         offset=np.zeros(3)
         rate=10
-        stretch = 2 # >1 -> slower
+        stretch = 10 # >1 -> slower
 
         traj = Trajectory()
-        traj.loadcsv(Path(__file__).parent / "data/circle0.csv")
+        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/circle0.csv")#Path(__file__).parent / "data/circle0.csv")
 
         start_time = self.timeHelper.time()
         while not self.timeHelper.isShutdown():

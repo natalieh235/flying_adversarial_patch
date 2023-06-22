@@ -2,9 +2,9 @@
 robots:
   cf231:
     enabled: true
-    uri: radio://0/60/2M/E7E7E7E7E7    ## CHANGED!
+    uri: radio://0/80/2M/E7E7E7E7E7    ## CHANGED!
     initial_position: [0.0, 0.0, 0.0] #z=0.15
-    type: cf21_motive #cf21_mocap_deck  # see robot_types
+    type: cf21 #cf21_mocap_deck  # see robot_types
     firmware_params:
       pid_attitude:
         yaw_kp: 3.0 # 6.0
@@ -22,18 +22,18 @@ robots:
     #     pNAcc_xy: 1.0 # default 0.5
     firmware_logging:
       enabled: true
-      custom_topics:
-        frontnet: 
-          frequency: 10
-          vars: ["ctrltarget.x", "ctrltarget.y", "ctrltarget.z", "ctrltarget.yaw"] #"frontnet.x_uart", "frontnet.y_uart", "frontnet.z_uart"]
-        frontnet_targetpos:
-          frequency: 10
-          vars: ["frontnet.targetx", "frontnet.targety", "frontnet.targetz", "frontnet.targetyaw"]
+      # custom_topics:
+      #   frontnet: 
+      #     frequency: 10
+      #     vars: ["ctrltarget.x", "ctrltarget.y", "ctrltarget.z", "ctrltarget.yaw"] #"frontnet.x_uart", "frontnet.y_uart", "frontnet.z_uart"]
+      #   frontnet_targetpos:
+      #     frequency: 10
+      #     vars: ["frontnet.targetx", "frontnet.targety", "frontnet.targetz", "frontnet.targetyaw"]
   cf4:
     enabled: true
-    uri: radio://0/60/2M/E7E7E7E704
-    initial_position: [0, -0.5, 0]
-    type: cf21_motive  # see robot_types
+    uri: radio://0/80/2M/E7E7E7E704
+    initial_position: [0.5, -0.5, 0.0]
+    type: cf21_mocap_deck  # see robot_types
     # firmware_params:
     #   kalman:
     #     pNAcc_xy: 1.0 # default 0.5
@@ -88,7 +88,7 @@ all:
   # firmware logging for all drones (use robot_types/type_name to set per type, or
   # robots/drone_name to set per drone)
   firmware_logging:
-    enabled: false
+    enabled: true
     default_topics:
      # remove to disable default topic
       pose:
