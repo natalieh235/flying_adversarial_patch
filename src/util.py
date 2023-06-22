@@ -21,6 +21,8 @@ import numpy as np
 import onnx
 from onnx import numpy_helper
 
+import glob
+
 def load_model(path, device, config):
     """
     Loads a saved Frontnet model from the given path with the set configuration and moves it to CPU/GPU.
@@ -296,6 +298,24 @@ def gen_noisy_transformations(batch_size, sf, tx, ty):
         noisy_transformation_matrix.append(matrix)
     
     return torch.cat(noisy_transformation_matrix)
+
+def load_patch(path, mode):
+    patches = []
+    for file_p in sorted(glob.glob(str(path) + '/' + str(mode)+ '*/' + 'patches.npy')):
+        patches.append(np.load(file_p)[-1])
+
+    return np.array(patches)
+
+def load_position(path, mode):
+    positions = []
+    for file_p in sorted(glob.glob(str(path) + '/' + str(mode)+ '*/' + 'positions_norm.npy')):
+        positions.append(np.load(file_p))
+
+    positions = np.rollaxis(np.array(positions), 2, 0)[-1]
+    positions = np.rollaxis(positions, 2, 1)
+    positions = np.rollaxis(positions, 1, 0)
+
+    return positions
 
 
 
