@@ -7,12 +7,15 @@ import matplotlib.pyplot as plt
 # white_p = np.ones((1, 96, 160))
 # patches = np.stack([black_p, white_p])
 
-# def gen_circle(r, n):
-
+def gen_circle(r, n):
+    t = np.linspace(0, 2*np.pi, n, endpoint=True)
+    x = r * np.cos(t)
+    y = r * np.sin(t)
+    return np.array([x, y]).T
 
 
 # all target poses 
-target_positions = np.array([[1, 0, 0], [2, 0, 0]]) # [1, 1, 0], [1, -1, 0], 
+target_positions = np.array([[1, 1, 0], [1, -1, 0], [1, 0, 0], [2, 0, 0]])
 num_targets = len(target_positions)
 
 # example opimized position norm
@@ -27,13 +30,16 @@ victim_pose = np.array([[-1., 0., 0., 0.],        # initial pose in world frame
 
 
 # desired next victim pose in world frame
-# desired_trajectory = 
-desired_pose = np.array([[-1., 0., 0., 2.],         # desired pose in world frame 
-                            [0., -1., 0., 0.],         # y = 1
+desired_trajectory = gen_circle(2., 20)
+desired_pose = np.array([[-1., 0., 0., 0.],          # desired pose in world frame 
+                            [0., -1., 0., 0.],         # 
                             [0., 0., 1., 1.]])         # no rotation, z = 1
 
+desired_idx = np.random.randint(low= 0, high=len(desired_trajectory)-1)
+desired_pose[:2, 3] = desired_trajectory[desired_idx]
+
 # assignment
-A = np.array([[True, False], [False, True]])
+A = np.array([[True, True, False, False], [False, False, True, True]])
 
 all_victim_positions = []
 all_desired_positions = []
@@ -41,9 +47,9 @@ all_desired_positions = []
 all_victim_positions.append(victim_pose[:2, 3].T)
 all_desired_positions.append(desired_pose[:2, 3].T)
 
-for i in range(10):
+for i in range(300):
     print(f"------{i}------")              
-    victim_pos= victim_pose[..., 3]
+    victim_pos= victim_pose[:2, 3]
 
     victim_quat = rowan.from_matrix(victim_pose[:3, :3])
 
@@ -62,12 +68,13 @@ for i in range(10):
     for target_idx in range(num_targets):
         # since we're keeping the yaw angle of the victim fixed, 
         # we can simply compute the max. achievable new position in world coordinates:
-        max_new_pos = victim_pos + target_positions[target_idx]
+        max_new_pos = victim_pos + target_positions[target_idx][:2]
         max_new_pos[0] -= 1. # safety radius
+        max_new_pos[0] -= np.random.uniform(0., 0.2) # debug
 
         new_pose_world = np.zeros((3, 4))
         new_pose_world[:3, :3] = rowan.to_matrix(victim_quat)
-        new_pose_world[..., 3][:3] = max_new_pos
+        new_pose_world[:2, 3] = max_new_pos
 
         possible_new_positions[target_idx, :, :] = new_pose_world
 
@@ -101,14 +108,26 @@ for i in range(10):
     print("m: ", m)
     # print(f"Presenting patch {m} at position {positions[m, k]} (in image frame)")
 
+    # pretend that pose got updated by frontnet output
+    # the pose will later be read from the mocap system
     position_change = possible_new_positions[k] - victim_pose
-    victim_pose[:2, 3] += (0.3*(position_change[:2, 3]) + np.random.uniform(-0.2, 0.2, (2,))) # add a bit of uncertainty
+    victim_pose[:2, 3] += (0.3*(position_change[:2, 3]) + np.random.uniform(-0.3, 0.3, (2,))) # add a bit of uncertainty
     print("updated victim pose: ", victim_pose)
     dist_after_update = np.linalg.norm((victim_pose-desired_pose), ord=2)
     print("error to desired: ", dist_after_update)
+    
 
-    if dist_after_update <= 0.11:
-        desired_pose[1, 3] += 1.
+    # distances = [np.linalg.norm(victim_pos-desired_trajectory[d_idx]) for d_idx in range(len(desired_trajectory))]
+    
+    # # desired_idx = np.argmin(distances)
+    # #desired_pose[:2, 3] = desired_trajectory[desired_idx]
+
+    if dist_after_update <= 0.2:
+        if desired_idx < len(desired_trajectory)-1:
+            desired_idx += 1
+        else:
+            desired_idx = 0
+        desired_pose[:2, 3] = desired_trajectory[desired_idx]
         print("updated desired pose! ", desired_pose)
 
     all_victim_positions.append(victim_pose[:2, 3].copy())
@@ -121,11 +140,13 @@ all_desired_positions = np.array(all_desired_positions)
 
 
 fig, ax = plt.subplots()
-ax.set_xlim(-2, 2)
-ax.set_ylim(-2., 2)
-ax.plot(all_victim_positions.T[1], all_victim_positions.T[0], marker=(3, 0, desired_yaw), markersize=20, linestyle='None')
-for i, (a,b) in enumerate(zip(all_victim_positions.T[1], all_victim_positions.T[0])): 
-    plt.text(a, b-0.007, str(i))
+ax.set_xlim(-5, 5)
+ax.set_ylim(-5., 5)
+ax.plot(desired_trajectory.T[1], desired_trajectory.T[0])
+ax.plot(all_victim_positions.T[1],  all_victim_positions.T[0], label='victim position')#, marker=(3, 0, desired_yaw), markersize=20, linestyle='None')
+# for i, (a,b) in enumerate(zip(all_victim_positions.T[1], all_victim_positions.T[0])): 
+#     plt.text(a, b-0.007, str(i))
 
-ax.plot(all_desired_positions.T[1], all_desired_positions.T[0], marker=(3, 0, desired_yaw), markersize=20, linestyle='None')
+ax.plot(all_desired_positions.T[1], all_desired_positions.T[0], marker=(3, 0, desired_yaw), markersize=20, linestyle='None', label='desired checkpoints')
+ax.legend()
 plt.show()
