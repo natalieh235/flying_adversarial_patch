@@ -34,21 +34,9 @@ def get_bb_patch(transformation):
     affine_grid = torch.nn.functional.affine_grid(inv_transform, size=(1, 1, 96, 160), align_corners=True)
 
     transformed_patch = torch.nn.functional.grid_sample(torch.ones(1, 1, 96, 160).double(), affine_grid, align_corners=True, padding_mode='zeros')
-    
-
-    # corner_left = [(corner_left[1] +1 * 0.5 * 160).round().item(), (corner_left[0] +1 * 0.5 * 96).round().item()]
-    # corner_right = [(corner_right[1] +1 * 0.5 * 160).round().item(), (corner_right[0] +1 * 0.5 * 96).round().item()] 
-    # print(corner_left, corner_right)
 
     patch_coords = torch.nonzero(transformed_patch)[..., 2:]
-    print(patch_coords, patch_coords.shape)
-    # patch_h = (patch_coords[-1][0]-patch_coords[0][0]).round().item()
-    # patch_w = (patch_coords[-1][1].item()-patch_coords[0][1]).round().item()
-    # corner_left = [patch_coords[0][1].item(), patch_coords[0][0].item() + int(patch_h/2)]
-    # corner_right = [patch_coords[-1][1].item(), patch_coords[0][0].item() + int(patch_h/2)]
-    # corner_left = [patch_coords[0][1].item(), (patch_coords[-1][0]-patch_coords[0][0]).round().item()]
-    # corner_right = [, (patch_coords[0][0]+(patch_coords[-1][0]-patch_coords[0][0])).round().item()]
-    #return np.array([corner_left, corner_right])
+
     xmin = patch_coords[0][1].item()
     ymin = patch_coords[0][0].item()
     xmax = patch_coords[-1][1].item()
@@ -94,8 +82,15 @@ def xyz_from_bb(bb,mtrx,dist_vec):
 with open('misc/aideck7/camera_config.yaml') as f:
     camera_config = yaml.load(f, Loader=yaml.FullLoader)
 
-camera_matrix = np.array(camera_config['camera_matrix'])
+# camera_matrix = np.array(camera_config['camera_matrix'])
 dist_vec = np.array(camera_config['dist_coeff'])
+
+# print(camera_matrix)
+
+camera_intrinsics = np.load("/home/pia/Documents/Coding/adversarial_frontnet/misc/aideck7/intrinsic_d.npy")
+camera_extrinsics = np.load("/home/pia/Documents/Coding/adversarial_frontnet/misc/aideck7/extrinsic.npy")
+
+# print(camera_intrinsics, camera_extrinsics)
 
 
 # all target poses 
@@ -107,41 +102,87 @@ positions_p0 = np.array([[0.5, -0.6, 0.4], [0.3, -0.2, -1.0]])
 positions_p1 = np.array([[0.5, -0.8, 0.3], [0.5, 0.6, 0.4]])
 positions = np.stack([positions_p0, positions_p1])
 
-transformation_matrix = gen_transformation_matrix(*positions_p0[0])
-
-bounding_box_placed_patch = get_bb_patch(transformation_matrix)
-
-print(bounding_box_placed_patch)
-
-patch_rel_position = xyz_from_bb(bounding_box_placed_patch, camera_matrix, dist_vec)
-print(patch_rel_position)
-
-
+# print(positions.shape)
 
 # current victim pose
-victim_pose = np.array([[-1., 0., 0., 0.],        # initial pose in world frame 
-                          [0., -1., 0., 0.],        # roll = 0, pitch = 0, yaw=0 
-                          [0., 0., 1., 1.]])         # no rotation, z = 1
+T_victim_world = np.array([[-1., 0., 0., 0.],        # initial pose in world frame 
+                        [0., -1., 0., 0.],        # roll = 0, pitch = 0, yaw=0 
+                        [0., 0., 1., 1.],         #t no rotation, z = 1
+                        [0., 0., 0., 1.] ])       
+
+T_attacker_world_c = np.array([[-1., 0., 0., 0.5],        # initial pose in world frame 
+                        [0., -1., 0., -0.5],        # roll = 0, pitch = 0, yaw=0 
+                        [0., 0., 1., 1.],         #t no rotation, z = 1
+                        [0., 0., 0., 1.] ])           
+
+
+
+A = np.array([[True, False], [False, True]])
+
+# def update_attacker_pose(A, optimized_patch_positions, )
+
+T_attacker_in_world_d = {'matrices': [], 'distances': []}
+for k in range(num_targets):
+
+    m = np.argwhere(A[..., k]==True)[0, 0]
+    transformation_matrix = gen_transformation_matrix(*positions[m,k])
+
+    bounding_box_placed_patch = get_bb_patch(transformation_matrix)
+
+    # print(bounding_box_placed_patch)
+
+    patch_in_camera = xyz_from_bb(bounding_box_placed_patch, camera_intrinsics, dist_vec)
+    print(patch_in_camera)
+    patch_in_victim = (np.linalg.inv(camera_extrinsics) @ [*patch_in_camera, 1])[:3]
+    print(patch_in_victim)
+    # print(patch_rel_position)
+
+    # T_patch_in_victim = np.zeros((4,4))
+    # T_patch_in_victim[:3, :3] = np.eye(3,3) # because victim is facing the other direction
+    # T_patch_in_victim[:3, 3] = patch_in_victim
+    # T_patch_in_victim[-1, -1] = 1.
+
+    # print(T_patch_in_victim)
+
+    #T_patch_in_world = T_victim_world @ T_patch_in_victim   <--- seems faulty to me
+    T_patch_in_world = T_victim_world.copy()
+    T_patch_in_world[:3, 3] += patch_in_victim
+    print(T_patch_in_world)
+
+    T_attacker_in_world = T_patch_in_world.copy()
+    T_attacker_in_world[2, 3] += 0.096  # center of CF is 9.6 cm above center of patch
+
+    T_attacker_in_world_d['matrices'].append(T_attacker_in_world)
+    T_attacker_in_world_d['distances'].append(np.linalg.norm((T_attacker_in_world-T_attacker_world_c), ord=2))
+
+   
+print(T_attacker_in_world_d['matrices'][np.argmin(T_attacker_in_world_d['distances'])])
+
+
+
+
+# print(T_patch_in_world)
+
 
 
 # desired next victim pose in world frame
 #desired_trajectory = gen_circle(2., 20)
-desired_pose = np.array([[-1., 0., 0., 0.],          # desired pose in world frame 
-                            [0., -1., 0., 0.],         # 
-                            [0., 0., 1., 1.]])         # no rotation, z = 1
+# desired_pose = np.array([[-1., 0., 0., 0.],          # desired pose in world frame 
+#                             [0., -1., 0., 0.],         # 
+#                             [0., 0., 1., 1.]])         # no rotation, z = 1
 
-#desired_idx = np.random.randint(low= 0, high=len(desired_trajectory)-1)
-#desired_pose[:2, 3] = desired_trajectory[desired_idx]
+# #desired_idx = np.random.randint(low= 0, high=len(desired_trajectory)-1)
+# #desired_pose[:2, 3] = desired_trajectory[desired_idx]
 
-# assignment
-#A = np.array([[True, True, False, False], [False, False, True, True]])
-A = np.array([[True, False], [False, True]])
+# # assignment
+# #A = np.array([[True, True, False, False], [False, False, True, True]])
+# A = np.array([[True, False], [False, True]])
 
-all_victim_positions = []
-all_desired_positions = []
+# all_victim_positions = []
+# all_desired_positions = []
 
-all_victim_positions.append(victim_pose[:2, 3].T)
-all_desired_positions.append(desired_pose[:2, 3].T)
+# all_victim_positions.append(victim_pose[:2, 3].T)
+# all_desired_positions.append(desired_pose[:2, 3].T)
 
 # for i in range(5):
 #     for target_idx in range(num_targets):
