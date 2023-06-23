@@ -8,10 +8,11 @@ import yaml
 
 import torch
 
-black_p = np.zeros((1, 96, 160))
-white_p = np.ones((1, 96, 160))
-rand_p = np.random.rand(1, 96, 160)
-# patches = np.stack([black_p, white_p])
+def gen_horizontal_line(start, end, num_points):
+    x = np.zeros(num_points)
+    y = np.linspace(start, end, num_points)
+    return np.column_stack([x, y])
+
 
 def gen_circle(r, n):
     t = np.linspace(0, 2*np.pi, n, endpoint=True)
@@ -48,8 +49,8 @@ def get_bb_patch(transformation):
 # printed patch width = 28.2 cm
 RADIUS = 0.14 # in m
 
-# compute 
-def xyz_from_bb(bb,mtrx,dist_vec):
+# compute relative position of center of patch in camera frame
+def xyz_from_bb(bb,mtrx):
     # bb - xmin,ymin,xmax,ymax
     # mtrx, dist_vec = get_camera_parameters()
     fx = np.array(mtrx)[0][0]
@@ -60,8 +61,8 @@ def xyz_from_bb(bb,mtrx,dist_vec):
     P1 = np.array([bb[0],(bb[1] + bb[3])/2])
     P2 = np.array([bb[2],(bb[1] + bb[3])/2])
     # rectify pixels
-    P1_rec = cv2.undistortPoints(P1, mtrx, dist_vec, None, mtrx).flatten()
-    P2_rec = cv2.undistortPoints(P2, mtrx, dist_vec, None, mtrx).flatten()
+    P1_rec = cv2.undistortPoints(P1, mtrx, None, None, mtrx).flatten() # distortion is included in my camera intrinsic matrix
+    P2_rec = cv2.undistortPoints(P2, mtrx, None, None, mtrx).flatten() # distortion is included in my camera intrinsic matrix
 
     # get rays for pixels
     a1 = np.array([(P1_rec[0]-ox)/fx, (P1_rec[1]-oy)/fy, 1.0])
@@ -78,88 +79,118 @@ def xyz_from_bb(bb,mtrx,dist_vec):
     return xyz
 
 
-# camera_extrinsics = np.load("/home/pia/Documents/Coding/adversarial_frontnet/misc/aideck7/extrinsic.npy")
-with open('misc/aideck7/camera_config.yaml') as f:
-    camera_config = yaml.load(f, Loader=yaml.FullLoader)
+def calc_max_possible_victim_change(current_victim_pose, target_position):
+    max_new_pos = current_victim_pose[:2, 3] + target_position[:2]   # v_x + target_x, v_y + target_y
+    max_new_pos[0] -= 1. # substract safety radius
 
-# camera_matrix = np.array(camera_config['camera_matrix'])
-dist_vec = np.array(camera_config['dist_coeff'])
+    victim_quat = rowan.from_matrix(current_victim_pose[:3, :3])
 
-# print(camera_matrix)
+    new_pose_world = np.zeros((4, 4))
+    new_pose_world[:3, :3] = rowan.to_matrix(victim_quat)
+    new_pose_world[:2, 3] = max_new_pos
+    new_pose_world[-1, -1] = 1.
 
-camera_intrinsics = np.load("/home/pia/Documents/Coding/adversarial_frontnet/misc/aideck7/intrinsic_d.npy")
-camera_extrinsics = np.load("/home/pia/Documents/Coding/adversarial_frontnet/misc/aideck7/extrinsic.npy")
+    return new_pose_world
 
-# print(camera_intrinsics, camera_extrinsics)
+def update_attacker_pose(A, optimized_patch_positions, T_victim_world_c, T_victim_world_d, camera_intrinsics, camera_extrinsics, target_positions):
 
+    T_attacker_in_world_d = {'matrices': [], 'distances': []}
+    for k in range(A.shape[1]):
 
-# all target poses 
-target_positions = np.array([[1, 1, 0], [1, -1, 0]])#, [1, 0, 0], [2, 0, 0]])
-num_targets = len(target_positions)
+        m = np.argwhere(A[..., k]==True)[0, 0]
+        transformation_matrix = gen_transformation_matrix(*optimized_patch_positions[m,k])
 
-# example opimized position norm
-positions_p0 = np.array([[0.5, -0.6, 0.4], [0.3, -0.2, -1.0]])
-positions_p1 = np.array([[0.5, -0.8, 0.3], [0.5, 0.6, 0.4]])
-positions = np.stack([positions_p0, positions_p1])
+        bounding_box_placed_patch = get_bb_patch(transformation_matrix)
 
-# print(positions.shape)
+        patch_in_camera = xyz_from_bb(bounding_box_placed_patch, camera_intrinsics)
+        # print(patch_in_camera)
+        patch_in_victim = (np.linalg.inv(camera_extrinsics) @ [*patch_in_camera, 1])[:3]
+        # print(patch_in_victim)
+        # print(patch_rel_position)T_victim_world_c
 
-# current victim pose
-T_victim_world = np.array([[-1., 0., 0., 0.],        # initial pose in world frame 
-                        [0., -1., 0., 0.],        # roll = 0, pitch = 0, yaw=0 
-                        [0., 0., 1., 1.],         #t no rotation, z = 1
-                        [0., 0., 0., 1.] ])       
+        # T_patch_in_victim = np.zeros((4,4))
+        # T_patch_in_victim[:3, :3] = np.eye(3,3)
+        # T_patch_in_victim[:3, 3] = patch_in_victim
+        # T_patch_in_victim[-1, -1] = 1.
 
-T_attacker_world_c = np.array([[-1., 0., 0., 0.5],        # initial pose in world frame 
-                        [0., -1., 0., -0.5],        # roll = 0, pitch = 0, yaw=0 
-                        [0., 0., 1., 1.],         #t no rotation, z = 1
-                        [0., 0., 0., 1.] ])           
+        # print(T_patch_in_victim)
 
+        #T_patch_in_world = T_victim_world @ T_patch_in_victim   <--- seems faulty to me
+        T_patch_in_world = T_victim_world_c.copy()
+        T_patch_in_world[:3, 3] += patch_in_victim
+        # print(T_patch_in_world)
 
+        T_attacker_in_world = T_patch_in_world.copy()
+        T_attacker_in_world[2, 3] += 0.096  # center of CF is 9.6 cm above center of patch
 
-A = np.array([[True, False], [False, True]])
+        T_attacker_in_world_d['matrices'].append(T_attacker_in_world)
 
-# def update_attacker_pose(A, optimized_patch_positions, )
+        T_possible_new_victim_pose = calc_max_possible_victim_change(T_victim_world_c, target_positions[k])
 
-T_attacker_in_world_d = {'matrices': [], 'distances': []}
-for k in range(num_targets):
+        # print(T_victim_world_c.shape, T_victim_world_d.shape, T_possible_new_victim_pose.shape)
 
-    m = np.argwhere(A[..., k]==True)[0, 0]
-    transformation_matrix = gen_transformation_matrix(*positions[m,k])
+        # Why base this decision on the victim pose?
+        # "The objective is to minimize the tracking error of the victim
+        # between its current pose pv and desired pose  ̄pv , i.e.∫t ∥ ̄pv (t) − ˆpv (t)∥dt."
+        T_attacker_in_world_d['distances'].append(np.linalg.norm((T_victim_world_d-T_possible_new_victim_pose), ord=2))
 
-    bounding_box_placed_patch = get_bb_patch(transformation_matrix)
-
-    # print(bounding_box_placed_patch)
-
-    patch_in_camera = xyz_from_bb(bounding_box_placed_patch, camera_intrinsics, dist_vec)
-    print(patch_in_camera)
-    patch_in_victim = (np.linalg.inv(camera_extrinsics) @ [*patch_in_camera, 1])[:3]
-    print(patch_in_victim)
-    # print(patch_rel_position)
-
-    # T_patch_in_victim = np.zeros((4,4))
-    # T_patch_in_victim[:3, :3] = np.eye(3,3) # because victim is facing the other direction
-    # T_patch_in_victim[:3, 3] = patch_in_victim
-    # T_patch_in_victim[-1, -1] = 1.
-
-    # print(T_patch_in_victim)
-
-    #T_patch_in_world = T_victim_world @ T_patch_in_victim   <--- seems faulty to me
-    T_patch_in_world = T_victim_world.copy()
-    T_patch_in_world[:3, 3] += patch_in_victim
-    print(T_patch_in_world)
-
-    T_attacker_in_world = T_patch_in_world.copy()
-    T_attacker_in_world[2, 3] += 0.096  # center of CF is 9.6 cm above center of patch
-
-    T_attacker_in_world_d['matrices'].append(T_attacker_in_world)
-    T_attacker_in_world_d['distances'].append(np.linalg.norm((T_attacker_in_world-T_attacker_world_c), ord=2))
-
-   
-print(T_attacker_in_world_d['matrices'][np.argmin(T_attacker_in_world_d['distances'])])
+    return T_attacker_in_world_d['matrices'][np.argmin(T_attacker_in_world_d['distances'])]
 
 
+if __name__ == "__main__":
 
+    # current victim pose, will be read from Mocap
+    T_victim_world_c = np.array([[-1., 0., 0., 0.],        # initial pose in world frame 
+                            [0., -1., 0., 0.],           # roll = 0, pitch = 0, yaw=0 
+                            [0., 0., 1., 1.],            # no rotation, z = 1
+                            [0., 0., 0., 1.] ])       
+
+    # current attacker pose, will be read from Mocap
+    T_attacker_world_c = np.array([[-1., 0., 0., 0.5],        # initial pose in world frame 
+                            [0., -1., 0., -0.5],              # roll = 0, pitch = 0, yaw=0 
+                            [0., 0., 1., 1.],                 # no rotation, z = 1
+                            [0., 0., 0., 1.] ])           
+
+
+    # assignment
+    A = np.array([[True, False], [False, True]])
+
+    # example opimized position norm
+    # need to be read from eval/exp?/mode/positions_norm.npy[-1]
+    # (or we store them in a new yaml file)
+    positions_p0 = np.array([[0.5, -0.6, 0.4], [0.3, -0.2, -1.0]])
+    positions_p1 = np.array([[0.5, -0.8, 0.3], [0.5, 0.6, 0.4]])
+    patch_positions_image = np.stack([positions_p0, positions_p1])
+
+    # all target poses
+    # can be read from settings file
+    target_positions = np.array([[1, 1, 0], [1, -1, 0]])#, [1, 0, 0], [2, 0, 0]])
+    #num_targets = len(target_positions)
+
+    camera_intrinsics = np.load("/home/pia/Documents/Coding/adversarial_frontnet/misc/aideck7/intrinsic_d.npy")
+    camera_extrinsics = np.load("/home/pia/Documents/Coding/adversarial_frontnet/misc/aideck7/extrinsic.npy")
+
+
+    # generate desired victim trajectory
+    # e.g. only change y direction
+    # first move to the right(y=1 in our flight space) and then to the left(y=-1 in our flight space)
+    desired_trajectory = gen_horizontal_line(1, -1, 20)   #gen_circle(2., 20)
+    # set first desired victim pose 
+    desired_idx = 10   # victim is at 0,0 at the start which is the mid point of the desired trajectory
+    T_victim_world_d = T_victim_world_c.copy()
+    # keep rotation, only change tx, ty to new desired position
+    T_victim_world_d[:2, 3] = desired_trajectory[desired_idx]
+    # print(T_victim_world_d)
+
+    T_attacker_world_c = update_attacker_pose(A, patch_positions_image, T_victim_world_c, T_victim_world_d, camera_intrinsics, camera_extrinsics, target_positions)
+
+    print(T_attacker_world_c)
+
+    # TODO: add loop and fake victim update
+
+
+
+    
 
 # print(T_patch_in_world)
 
