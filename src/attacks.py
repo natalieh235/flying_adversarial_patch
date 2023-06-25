@@ -603,7 +603,7 @@ if __name__=="__main__":
             train_losses_per_patch = []
             test_losses_per_patch = []
             for patch_idx in range(num_patches):
-                scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][patch_idx])
+                scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][patch_idx], scale_min, scale_max)
                 transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
                 train_losses_per_patch.append(calc_eval_loss(train_set, patch[patch_idx:patch_idx+1], transformation_matrix, model, target, quantized=quantized))
@@ -648,7 +648,7 @@ if __name__=="__main__":
     # prepare data for plots
     # normalize scale factor, tx and ty for plots
 
-    norm_optimized_vecs = [norm_transformation(optimization_pos_vectors[i].mT[..., 0], optimization_pos_vectors[i].mT[..., 1], optimization_pos_vectors[i].mT[..., 2]) for i in range(len(optimization_pos_vectors))]
+    norm_optimized_vecs = [norm_transformation(optimization_pos_vectors[i].mT[..., 0], optimization_pos_vectors[i].mT[..., 1], optimization_pos_vectors[i].mT[..., 2], scale_min, scale_max) for i in range(len(optimization_pos_vectors))]
 
     all_sf = torch.stack([norm_optimized_vecs[i][0] for i in range(len(norm_optimized_vecs))])
     all_tx = torch.stack([norm_optimized_vecs[i][1] for i in range(len(norm_optimized_vecs))])
@@ -687,7 +687,7 @@ if __name__=="__main__":
         loss_opt_patch_best = None
         loss_opt_patch_best_value = np.inf
         for patch_idx in range(num_patches):
-            scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][patch_idx])
+            scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][patch_idx], scale_min, scale_max)
             transformation_matrix = get_transformation(scale_norm, tx_norm, ty_norm).to(device)
 
             mod_img = place_patch(test_batch, patch_start[patch_idx:patch_idx+1], transformation_matrix)
@@ -723,7 +723,7 @@ if __name__=="__main__":
     for target_idx, target in enumerate(targets):
         for patch_idx in range(num_patches):
 
-            scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][patch_idx])
+            scale_norm, tx_norm, ty_norm = norm_transformation(*optimization_pos_vectors[-1][target_idx][patch_idx], scale_min, scale_max)
             for target_offset, position_offset in zip(stlc_target_offsets, stlc_position_offsets):
                 transformation_matrix = get_transformation(scale_norm + position_offset[0], tx_norm + position_offset[1], ty_norm + position_offset[2]).to(device)
 
