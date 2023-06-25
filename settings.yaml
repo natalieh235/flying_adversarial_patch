@@ -1,5 +1,5 @@
 #path: "eval/debug/random_perspective_10t_q_t/"
-path: "eval/debug/ctrl_1/"
+path: "eval/debug/ctrl_4/"
 # +x is distance
 # +y is left
 # +z is top
@@ -9,16 +9,27 @@ targets:
   z : [ 0.0] #, 0.0, 0.0] #, 0.0] #, 0.0] #, -1.0] #, 1.0, -1.0, 1.0, -1.0, 1.0, 0.0]
 stlc: # small-time locally controllability
   offsets:
+    # base
     - target: [0,0,0]
       position: [0,0,0]
+    # x
     - target: [0.1,0,0]
-      position: [-0.05,0,0]
+      position: [-0.08,0,0]
     - target: [0.2,0,0]
-      position: [-0.1,0,0]
+      position: [-0.12,0,0]
     - target: [-0.1,0,0]
-      position: [0.05,0,0]
+      position: [0.13,0,0]
     - target: [-0.2,0,0]
-      position: [0.1,0,0]
+      position: [0.40,0,0]
+    # y
+    - target: [0.,0.1,0]
+      position: [0,-0.04,0]
+    - target: [0,0.2,0]
+      position: [0,-0.08,0]
+    - target: [0,-0.1,0]
+      position: [0,0.04,0]
+    - target: [0,-0.2,0]
+      position: [0,0.08,0]
     # - target: [0,0.5,0]
     #   position: [0,0.3,0]
     # - target: [0,-0.5,0]
@@ -26,14 +37,14 @@ stlc: # small-time locally controllability
 lr_pos: 0.001
 lr_patch: 0.001
 prob_weight: 1.0
-num_hl_iter: 50
+num_hl_iter: 20
 num_pos_restarts: 3
 num_pos_epochs: 1
 num_patch_epochs: 1
 batch_size: 32
 num_patches: 1
-scale_min: 0.3
-scale_max: 0.5
+scale_min: 0.2
+scale_max: 0.4
 patch: 
   mode: 'random'  # face, white, random
   path: 'src/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored

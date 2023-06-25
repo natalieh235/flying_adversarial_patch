@@ -54,7 +54,7 @@ def get_bb_patch(transformation):
     return [xmin, ymin, xmax, ymax]
 
 # printed patch width = 28.2 cm
-RADIUS = 0.137 # in m
+RADIUS = 0.1405 # in m
 
 # compute relative position of center of patch in camera frame
 def xyz_from_bb(bb,mtrx, dist_coeffs):
