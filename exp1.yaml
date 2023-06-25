@@ -15,6 +15,8 @@ num_pos_epochs: 1
 num_patch_epochs: 1
 batch_size: 32
 num_patches: 2
+scale_min: 0.3
+scale_max: 0.5
 patch: 
   mode: 'random'  # face, white, random
   path: 'src/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
