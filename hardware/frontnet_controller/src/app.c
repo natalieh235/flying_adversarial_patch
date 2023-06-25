@@ -151,7 +151,7 @@ void appMain()
     p_D_prime = vadd(target_pos, e_H_delta);
     setpoint.position.x = p_D_prime.x;
     setpoint.position.y = p_D_prime.y;
-    setpoint.position.z = 0.5f;           // keep z fixed an low for now, crashes from higher up damage the AI deck
+    setpoint.position.z = 1.0f;           // keep z fixed an low for now, crashes from higher up damage the AI deck
 
     setpoint.velocity_body = false;  // world frame
 
