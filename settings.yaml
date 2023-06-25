@@ -1,17 +1,33 @@
 #path: "eval/debug/random_perspective_10t_q_t/"
-path: "eval/demo_fp/"
+path: "eval/debug/ctrl/"
 # +x is distance
 # +y is left
 # +z is top
 targets:
-  x : [ 1.0, 1.0, 1.0] #, 1.0] #, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
-  y : [ 0.0, -1.0, 1.0] #, 0.0] #, 0.0, -1.0, -1.0, 1.0, 1.0, 0.0]
-  z : [ 0.0, 0.0, 0.0] #, -1.0] #, 1.0, -1.0, 1.0, -1.0, 1.0, 0.0]
+  x : [ 1.0] #, 1.2, 0.8] #, 1.0] #, 1.0] #, 1.0] #, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
+  y : [ 0.0] #, 0.0, 0.0] #, -1.0] #, 1.0] #, 0.0] #, 0.0, -1.0, -1.0, 1.0, 1.0, 0.0]
+  z : [ 0.0] #, 0.0, 0.0] #, 0.0] #, 0.0] #, -1.0] #, 1.0, -1.0, 1.0, -1.0, 1.0, 0.0]
+stlc: # small-time locally controllability
+  offsets:
+    - target: [0,0,0]
+      position: [0,0,0]
+    - target: [0.1,0,0]
+      position: [-0.05,0,0]
+    - target: [0.2,0,0]
+      position: [-0.1,0,0]
+    - target: [-0.1,0,0]
+      position: [0.05,0,0]
+    - target: [-0.2,0,0]
+      position: [0.1,0,0]
+    # - target: [0,0.5,0]
+    #   position: [0,0.3,0]
+    # - target: [0,-0.5,0]
+    #   position: [0,-0.3,0]
 lr_pos: 0.001
 lr_patch: 0.001
 prob_weight: 1.0
-num_hl_iter: 100
-num_pos_restarts: 20
+num_hl_iter: 20
+num_pos_restarts: 3
 num_pos_epochs: 1
 num_patch_epochs: 1
 batch_size: 32
