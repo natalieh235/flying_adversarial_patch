@@ -1,5 +1,5 @@
 #path: "eval/debug/random_perspective_10t_q_t/"
-path: "eval/debug/multi_patch/"
+path: "eval/demo_fp/"
 # +x is distance
 # +y is left
 # +z is top
@@ -9,13 +9,17 @@ targets:
   z : [ 0.0, 0.0, 0.0] #, -1.0] #, 1.0, -1.0, 1.0, -1.0, 1.0, 0.0]
 lr_pos: 0.001
 lr_patch: 0.001
-num_hl_iter: 10
+prob_weight: 1.0
+num_hl_iter: 100
 num_pos_restarts: 20
 num_pos_epochs: 1
 num_patch_epochs: 1
 batch_size: 32
+num_patches: 1
+scale_min: 0.3
+scale_max: 0.5
 patch: 
-  mode: 'face'  # face, white, random
+  mode: 'random'  # face, white, random
   path: 'src/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
 mode: "joint" # fixed, joint, split, hybrid
-quantized: true
+quantized: false
