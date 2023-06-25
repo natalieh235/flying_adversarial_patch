@@ -22,18 +22,18 @@ robots:
     #     pNAcc_xy: 1.0 # default 0.5
     firmware_logging:
       enabled: true
-      # custom_topics:
-      #   frontnet: 
-      #     frequency: 10
-      #     vars: ["ctrltarget.x", "ctrltarget.y", "ctrltarget.z", "ctrltarget.yaw"] #"frontnet.x_uart", "frontnet.y_uart", "frontnet.z_uart"]
+      custom_topics:
+        frontnet: 
+          frequency: 10
+          vars: ["ctrltarget.x", "ctrltarget.y", "ctrltarget.z", "ctrltarget.yaw"] #"frontnet.x_uart", "frontnet.y_uart", "frontnet.z_uart"]
       #   frontnet_targetpos:
       #     frequency: 10
       #     vars: ["frontnet.targetx", "frontnet.targety", "frontnet.targetz", "frontnet.targetyaw"]
   cf4:
     enabled: true
     uri: radio://0/80/2M/E7E7E7E704
-    initial_position: [0.5, -0.5, 0.0]
-    type: cf21_mocap_deck  # see robot_types
+    initial_position: [0.5, -0.5, 0.3]
+    type: cf21  # see robot_types
     # firmware_params:
     #   kalman:
     #     pNAcc_xy: 1.0 # default 0.5

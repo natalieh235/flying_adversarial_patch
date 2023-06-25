@@ -106,13 +106,13 @@ def generate_launch_description():
                 "max_dt": 0.1,              # artificially limit the step() function (set to 0 to disable)
             }]
         ),
-        # Node(
-        #     package='rviz2',
-        #     namespace='',
-        #     executable='rviz2',
-        #     name='rviz2',
-        #     arguments=['-d' + rviz_config]
-        # ),
+        Node(
+            package='rviz2',
+            namespace='',
+            executable='rviz2',
+            name='rviz2',
+            arguments=['-d' + rviz_config]
+        ),
         Node(
             package='frontnet_ros',
             namespace='',

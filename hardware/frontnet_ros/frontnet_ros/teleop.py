@@ -35,7 +35,7 @@ class VisualizationNode(Node):
         # vars: ["frontnet.targetx", "frontnet.targety", "frontnet.targetz", "frontnet.targetyaw"]
 
         # self.get_logger().info('I heard: "%s"' % msg)
-        if msg.buttons[2] == 1:
+        if msg.buttons[2] == 1:   # blue button
             param_name = "cf231/params/frontnet/start"
             value = 1
             param_type = ParameterType.PARAMETER_INTEGER
@@ -44,7 +44,7 @@ class VisualizationNode(Node):
             req.parameters = [Parameter(name=param_name, value=param_value)]
             self.setParamsService.call_async(req)
 
-        if msg.buttons[6] == 1:
+        if msg.buttons[6] == 1:   # back (land) button
             param_name = "cf231/params/frontnet/start"
             value = 0
             param_type = ParameterType.PARAMETER_INTEGER

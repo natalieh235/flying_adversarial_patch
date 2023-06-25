@@ -43,14 +43,18 @@ def get_bb_patch(transformation):
     xmax = patch_coords[-1][1].item()
     ymax = patch_coords[-1][0].item()
 
+    # fig, ax = plt.subplots()
+    # ax.imshow(transformed_patch[0][0], cmap='gray')
+    # plt.show()
+
     return [xmin, ymin, xmax, ymax]
 
 
 # printed patch width = 28.2 cm
-RADIUS = 0.14 # in m
+RADIUS = 0.137 # in m
 
 # compute relative position of center of patch in camera frame
-def xyz_from_bb(bb,mtrx):
+def xyz_from_bb(bb,mtrx, dist_coeffs):
     # bb - xmin,ymin,xmax,ymax
     # mtrx, dist_vec = get_camera_parameters()
     fx = np.array(mtrx)[0][0]
@@ -61,8 +65,8 @@ def xyz_from_bb(bb,mtrx):
     P1 = np.array([bb[0],(bb[1] + bb[3])/2])
     P2 = np.array([bb[2],(bb[1] + bb[3])/2])
     # rectify pixels
-    P1_rec = cv2.undistortPoints(P1, mtrx, None, None, mtrx).flatten() # distortion is included in my camera intrinsic matrix
-    P2_rec = cv2.undistortPoints(P2, mtrx, None, None, mtrx).flatten() # distortion is included in my camera intrinsic matrix
+    P1_rec = cv2.undistortPoints(P1, mtrx, dist_coeffs, None, mtrx).flatten() # distortion is included in my camera intrinsic matrix
+    P2_rec = cv2.undistortPoints(P2, mtrx, dist_coeffs, None, mtrx).flatten() # distortion is included in my camera intrinsic matrix
 
     # get rays for pixels
     a1 = np.array([(P1_rec[0]-ox)/fx, (P1_rec[1]-oy)/fy, 1.0])
@@ -92,7 +96,15 @@ def calc_max_possible_victim_change(current_victim_pose, target_position):
 
     return new_pose_world
 
-def update_attacker_pose(A, optimized_patch_positions, T_victim_world_c, T_victim_world_d, camera_intrinsics, camera_extrinsics, target_positions):
+def update_attacker_pose(optimized_patch_positions, T_victim_world_c, T_victim_world_d, camera_intrinsics, camera_extrinsics, ):
+
+    target_positions = np.array([[1, 1, 0], [1, -1, 0]])
+    
+    A = np.array([[True, False], [False, True]])
+    # possible_attacker_position = np.array([[0.28316405,  0.20245424, -0.2117372 ],
+                                        #    [0.30532456, -0.20091306, -0.22638479]])
+
+
 
     T_attacker_in_world_d = {'matrices': [], 'distances': []}
     for k in range(A.shape[1]):
@@ -105,7 +117,7 @@ def update_attacker_pose(A, optimized_patch_positions, T_victim_world_c, T_victi
         patch_in_camera = xyz_from_bb(bounding_box_placed_patch, camera_intrinsics)
         # print(patch_in_camera)
         patch_in_victim = (np.linalg.inv(camera_extrinsics) @ [*patch_in_camera, 1])[:3]
-        # print(patch_in_victim)
+        print(patch_in_victim)
         # print(patch_rel_position)T_victim_world_c
 
         # T_patch_in_victim = np.zeros((4,4))
@@ -122,6 +134,8 @@ def update_attacker_pose(A, optimized_patch_positions, T_victim_world_c, T_victi
 
         T_attacker_in_world = T_patch_in_world.copy()
         T_attacker_in_world[2, 3] += 0.096  # center of CF is 9.6 cm above center of patch
+
+        
 
         T_attacker_in_world_d['matrices'].append(T_attacker_in_world)
 
@@ -167,22 +181,25 @@ if __name__ == "__main__":
     target_positions = np.array([[1, 1, 0], [1, -1, 0]])#, [1, 0, 0], [2, 0, 0]])
     #num_targets = len(target_positions)
 
-    camera_intrinsics = np.load("/home/pia/Documents/Coding/adversarial_frontnet/misc/aideck7/intrinsic_d.npy")
+
+    camera_intrinsics = np.load("/home/pia/Documents/Coding/adversarial_frontnet/misc/aideck7/intrinsic.npy")
     camera_extrinsics = np.load("/home/pia/Documents/Coding/adversarial_frontnet/misc/aideck7/extrinsic.npy")
 
+    print(camera_intrinsics, camera_extrinsics)
 
     # generate desired victim trajectory
     # e.g. only change y direction
     # first move to the right(y=1 in our flight space) and then to the left(y=-1 in our flight space)
     desired_trajectory = gen_horizontal_line(1, -1, 20)   #gen_circle(2., 20)
     # set first desired victim pose 
-    desired_idx = 10   # victim is at 0,0 at the start which is the mid point of the desired trajectory
+    desired_idx = 0   # victim is at 0,0 at the start which is the mid point of the desired trajectory
     T_victim_world_d = T_victim_world_c.copy()
     # keep rotation, only change tx, ty to new desired position
     T_victim_world_d[:2, 3] = desired_trajectory[desired_idx]
     # print(T_victim_world_d)
 
-    T_attacker_world_c = update_attacker_pose(A, patch_positions_image, T_victim_world_c, T_victim_world_d, camera_intrinsics, camera_extrinsics, target_positions)
+
+    T_attacker_world_c = update_attacker_pose(patch_positions_image, T_victim_world_c, T_victim_world_d, camera_intrinsics, camera_extrinsics)
 
     print(T_attacker_world_c)
 
