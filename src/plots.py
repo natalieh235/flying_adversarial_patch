@@ -15,14 +15,13 @@ from attacks import get_transformation
 
 from collections import defaultdict
 
-def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, img_idx=0):
+def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, p_idx, img_idx=0):
     dataset_path = 'pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle'
     train_set = load_dataset(path=dataset_path, batch_size=1, shuffle=True, drop_last=False, num_workers=0)
 
     base_img, ground_truth = train_set.dataset.__getitem__(img_idx)
     base_img = base_img.unsqueeze(0) / 255.
-
-    patch = torch.from_numpy(patch).unsqueeze(0).unsqueeze(0) 
+    patch = torch.from_numpy(patch)
 
     scale_norm = torch.tensor(scale_norm)
     tx_norm = torch.tensor(tx_norm)
@@ -31,7 +30,7 @@ def img_placed_patch(targets, patch, scale_norm, tx_norm, ty_norm, img_idx=0):
 
     final_images = []
     for target_idx in range(len(targets)):
-        transformation_matrix = get_transformation(scale_norm[target_idx], tx_norm[target_idx], ty_norm[target_idx])
+        transformation_matrix = get_transformation(scale_norm[target_idx,p_idx], tx_norm[target_idx,p_idx], ty_norm[target_idx,p_idx])
         
         final_images.append(place_patch(base_img, patch, transformation_matrix, random_perspection=False).numpy()[0])
 
@@ -48,10 +47,10 @@ def plot_results(path):
     targets = np.array(targets, dtype=float).T
 
     mode = settings['mode']
+    num_patches = settings["num_patches"]
 
 
     optimization_patches = np.load(path / 'patches.npy')
-    # print(optimization_patches.shape)
     
     optimization_patch_losses = np.load(path / 'patch_losses.npy')
     # print(optimization_patch_losses.shape)
@@ -77,18 +76,17 @@ def plot_results(path):
     boxplot_data = np.rollaxis(boxplot_data, 2, 1)
     # print(boxplot_data.shape)
 
-    img_w_patch = img_placed_patch(targets, optimization_patches[-1], scale_norm=all_sf[-1], tx_norm=all_tx[-1], ty_norm=all_ty[-1])
-    #print(img_w_patch.shape)
 
     with PdfPages(Path(path) / 'result.pdf') as pdf:
-        for idx, patch in enumerate(optimization_patches):
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            ax.set_title(f'Patch at training iteration {idx}')
-            ax.imshow(patch, cmap='gray')
-            plt.axis('off')
-            pdf.savefig(fig)
-            plt.close(fig)
+        for iter_idx, patch in enumerate(optimization_patches):
+            for p_idx in range(num_patches):
+                fig = plt.figure()
+                ax = fig.add_subplot(111)
+                ax.set_title(f'Patch {p_idx} at training iteration {iter_idx}')
+                ax.imshow(patch[p_idx,0], cmap='gray')
+                plt.axis('off')
+                pdf.savefig(fig)
+                plt.close(fig)
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
@@ -99,17 +97,17 @@ def plot_results(path):
         pdf.savefig(fig)
         plt.close(fig)
 
-        if mode == 'hybrid' or mode == 'split':
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            ax.set_title(f'Loss position optimization for all iterations')
-            for target_idx, target in enumerate(targets):
-                ax.plot(optimization_pos_losses[target_idx], label=f'target {target}')
-            ax.set_xlabel('iteration')
-            ax.set_ylabel('MSE')
-            ax.legend()
-            pdf.savefig(fig)
-            plt.close(fig)
+        # if mode == 'hybrid' or mode == 'split':
+        #     fig = plt.figure()
+        #     ax = fig.add_subplot(111)
+        #     ax.set_title(f'Loss position optimization for all iterations')
+        #     for target_idx, target in enumerate(targets):
+        #         ax.plot(optimization_pos_losses[target_idx], label=f'target {target}')
+        #     ax.set_xlabel('iteration')
+        #     ax.set_ylabel('MSE')
+        #     ax.legend()
+        #     pdf.savefig(fig)
+        #     plt.close(fig)
 
         for target_idx, target in enumerate(targets):
             fig = plt.figure()
@@ -134,17 +132,17 @@ def plot_results(path):
         #     pdf.savefig(fig)
         #     plt.close(fig)
 
-
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title(f'scale factor for all iterations')
-        for target_idx, target in enumerate(targets):
-            ax.plot(all_sf[:, target_idx], label=f'target {target}')
-        ax.set_xlabel('iteration')
-        ax.set_ylabel('scale factor')
-        ax.legend()
-        pdf.savefig(fig)
-        plt.close(fig)
+        for p_idx in range(num_patches):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'scale factor for all iterations patch {p_idx}')
+            for target_idx, target in enumerate(targets):
+                ax.plot(all_sf[:, target_idx, p_idx], label=f'target {target}')
+            ax.set_xlabel('iteration')
+            ax.set_ylabel('scale factor')
+            ax.legend()
+            pdf.savefig(fig)
+            plt.close(fig)
 
         # for idx in range(all_sf.shape[0]):
         #     fig = plt.figure()
@@ -156,27 +154,29 @@ def plot_results(path):
         #     pdf.savefig(fig)
         #     plt.close(fig)
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title(f'tx for all iterations')
-        for target_idx, target in enumerate(targets):
-            ax.plot(all_tx[:, target_idx], label=f'target {target}')
-        ax.set_xlabel('iteration')
-        ax.set_ylabel('tx')
-        ax.legend()
-        pdf.savefig(fig)
-        plt.close(fig)
+        for p_idx in range(num_patches):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'tx for all iterations patch {p_idx}')
+            for target_idx, target in enumerate(targets):
+                ax.plot(all_tx[:, target_idx, p_idx], label=f'target {target}')
+            ax.set_xlabel('iteration')
+            ax.set_ylabel('tx')
+            ax.legend()
+            pdf.savefig(fig)
+            plt.close(fig)
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_title(f'ty for all iterations')
-        for target_idx, target in enumerate(targets):
-            ax.plot(all_ty[:, target_idx], label=f'target {target}')
-        ax.set_xlabel('iteration')
-        ax.set_ylabel('ty')
-        ax.legend()
-        pdf.savefig(fig)
-        plt.close(fig)
+        for p_idx in range(num_patches):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title(f'ty for all iterations patch {p_idx}')
+            for target_idx, target in enumerate(targets):
+                ax.plot(all_ty[:, target_idx, p_idx], label=f'target {target}')
+            ax.set_xlabel('iteration')
+            ax.set_ylabel('ty')
+            ax.legend()
+            pdf.savefig(fig)
+            plt.close(fig)
 
         mean = np.mean(boxplot_data[:, :, 1])
         std = np.std(boxplot_data[:, :, 1])
@@ -193,12 +193,52 @@ def plot_results(path):
             pdf.savefig(fig)
             plt.close(fig)
 
-        for target_idx, target in enumerate(targets):
-            fig, ax = plt.subplots(1,1)
-            ax.imshow(img_w_patch[target_idx][0], cmap='gray')
-            ax.set_title(f'Placed patch after optimization, target {target}')
-            pdf.savefig(fig)
-            plt.close()
+        for p_idx in range(num_patches):
+            for target_idx, target in enumerate(targets):
+                fig, ax = plt.subplots(1,1)
+                img_w_patch = img_placed_patch(targets, optimization_patches[-1,p_idx:p_idx+1], scale_norm=all_sf[-1], tx_norm=all_tx[-1], ty_norm=all_ty[-1], p_idx=p_idx)
+                ax.imshow(img_w_patch[target_idx,0], cmap='gray')
+                ax.set_title(f'Placed patch {p_idx} after optimization, target {target}')
+                pdf.savefig(fig)
+                plt.close()
+
+        # stats and stats_p
+        stats = np.load(path / 'stats.npy')
+
+        # plot individual losses over iterations
+        fig, axs = plt.subplots(1, len(targets), sharex=True, sharey=True, squeeze=False)
+        fig.suptitle('Individual Training Losses')
+        for target_idx in range(len(targets)):
+            for patch_idx in range(num_patches):
+                axs[0, target_idx].plot(stats[:,patch_idx,target_idx], label="Patch {}".format(patch_idx))
+        axs[0,0].legend()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        print(stats[-1])
+        print("Loss after assignment: ", np.sum(np.min(stats[-1], axis=0)))
+
+        # plot individual probs over iterations
+        stats_p = np.load(path / 'stats_p.npy')
+        fig, axs = plt.subplots(1, len(targets), sharex=True, sharey=True, squeeze=False)
+        fig.suptitle('Individual Probabilities')
+        for target_idx in range(len(targets)):
+            for patch_idx in range(num_patches):
+                axs[0, target_idx].plot(stats_p[:,patch_idx,target_idx], label="Patch {}".format(patch_idx))
+        axs[0,0].legend()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # plot individual expectation over iterations
+        fig, axs = plt.subplots(1, len(targets), sharex=True, sharey=True, squeeze=False)
+        fig.suptitle('Individual Expectation')
+        for target_idx in range(len(targets)):
+            for patch_idx in range(num_patches):
+                axs[0, target_idx].plot(stats_p[:,patch_idx,target_idx] * stats[:,patch_idx,target_idx], label="Patch {}".format(patch_idx))
+        axs[0,0].legend()
+        pdf.savefig(fig)
+        plt.close(fig)
+
 
 def combine_arrays(paths, name):
     arr = []
@@ -252,7 +292,7 @@ def show_multi_placed(result, targets, mode):
     for run_idx, position in enumerate(result['positions']):
         scale_norm, tx_norm, ty_norm = position[:, -1, :]
         last_patch = result['patches'][run_idx][-1]
-        final_images.append(img_placed_patch(targets, last_patch, scale_norm, tx_norm, ty_norm))
+        final_images.append(img_placed_patch(targets, last_patch, scale_norm, tx_norm, ty_norm, p_idx))
     final_images = np.rollaxis(np.array(final_images), 1, 0)
     
     best_idx = np.argmin(np.mean(result['test_loss'][:, :, -1], axis=0))
@@ -336,11 +376,11 @@ def eval_multi_run(path, modes=['fixed', 'joint', 'split', 'hybrid'], verbose=Fa
         
             boxplot_means.append(boxplot_mean)
 
-            # --- place patches at optimal position 
-            fig = show_multi_placed(results[mode], targets, mode)
-            #for fig in figures:
-            pdf.savefig(fig)
-            plt.close()  
+            # # --- place patches at optimal position 
+            # fig = show_multi_placed(results[mode], targets, mode)
+            # #for fig in figures:
+            # pdf.savefig(fig)
+            # plt.close()  
         
         # --- create box plots
         boxplot_means = np.rollaxis(np.array(boxplot_means), 1, 0)
