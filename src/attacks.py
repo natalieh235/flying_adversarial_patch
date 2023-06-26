@@ -69,7 +69,7 @@ def gen_noisy_transformations(batch_size, sf, tx, ty, scale_min=0.3, scale_max=0
     
     return torch.cat(noisy_transformation_matrix)
 
-def targeted_attack_joint(dataset, patch, model, positions, assignment, targets, lr=3e-2, epochs=10, path="eval/", prob_weight=5, scale_min=0.3, scale_max=0.5, target_offsets = [[0,0,0]], position_offsets=[[0,0,0]]):
+def targeted_attack_joint(dataset, patch, model, positions, assignment, targets, lr=3e-2, epochs=10, path="eval/", prob_weight=5, scale_min=0.3, scale_max=0.5, target_offsets = [[0,0,0]], position_offsets=[[0,0,0]], stlc_weights=[1.0]):
 
     patch_t = patch.clone().requires_grad_(True)
     positions_t = positions.clone().requires_grad_(True)
@@ -118,7 +118,7 @@ def targeted_attack_joint(dataset, patch, model, positions, assignment, targets,
                     #print(transformations_multi.shape)
 
                     target_loss = torch.zeros(len(patch_t[active_patches]), device=patch.device)
-                    for target_offset, position_offset in zip(target_offsets, position_offsets):
+                    for target_offset, position_offset, weight in zip(target_offsets, position_offsets, stlc_weights):
 
                         noisy_transformations = torch.stack([gen_noisy_transformations(len(batch), scale_factor + position_offset[0], tx + position_offset[1], ty + position_offset[2]) for scale_factor, tx, ty in position[active_patches]])
                         # print(noisy_transformations.shape)
@@ -162,7 +162,7 @@ def targeted_attack_joint(dataset, patch, model, positions, assignment, targets,
                         # target_losses.append(mse_loss(target_batch, pred))
 
                         #target_losses.append(torch.min(mse_loss(target_batch, pred_v)))
-                        target_loss += torch.stack([mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
+                        target_loss += weight * torch.stack([mse_loss(tar, pred) for tar, pred in zip(target_batch, pred_v)]) # calc mse for each of the predictions of each patch
 
                     
                     stats[active_patches, target_idx] += target_loss.detach().cpu().numpy()
@@ -477,6 +477,7 @@ if __name__=="__main__":
 
     stlc_target_offsets = torch.tensor([o['target'] for o in settings['stlc']['offsets']], dtype=torch.float, device=device)
     stlc_position_offsets = [o['position'] for o in settings['stlc']['offsets']]
+    stlc_weights = [o['weight'] if 'weight' in o else 1.0 for o in settings['stlc']['offsets']]
 
     # get target values in correct shape and move tensor to device
     targets = [values for _, values in settings['targets'].items()]
@@ -565,7 +566,8 @@ if __name__=="__main__":
             stats_all.append(stats)
             stats_p_all.append(stats_p)
         elif mode == "joint" or mode == "hybrid":
-            patch, loss_patch, positions, stats, stats_p = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path, prob_weight=prob_weight, scale_min=scale_min, scale_max=scale_max, target_offsets=stlc_target_offsets, position_offsets=stlc_position_offsets)
+            patch, loss_patch, positions, stats, stats_p = targeted_attack_joint(train_set, patch, model, optimization_pos_vectors[-1], A, targets=targets, lr=lr_patch, epochs=num_patch_epochs, path=path, prob_weight=prob_weight, scale_min=scale_min, scale_max=scale_max, target_offsets=stlc_target_offsets, position_offsets=stlc_position_offsets,
+            stlc_weights=stlc_weights)
             optimization_pos_vectors.append(positions)
 
             pos_losses.append(loss_patch)
