@@ -46,7 +46,7 @@ num_patches: 1
 scale_min: 0.2
 scale_max: 0.4
 patch: 
-  mode: 'random'  # face, white, random
-  path: 'src/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
+  mode: 'face'  # face, white, random
+  path: 'src/custom_patches/custom_patch_96x160.npy' # if mode == 'face' set a path, otherwise path is ignored
 mode: "joint" # fixed, joint, split, hybrid
 quantized: true
