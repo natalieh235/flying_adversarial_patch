@@ -111,11 +111,11 @@ if __name__ == '__main__':
     camera_extrinsic[-1, -1] = 1.
 
 
-    position_1 = np.array([0.4, 0.0, 0.0])
-    position_2 = np.array([0.4, -0.2, 0.0])
+    opt_trans_1 = np.array([0.4, 0.0, 0.0])
+    opt_trans_2 = np.array([0.4, 0.3, 0.0])
     
-    patch_in_victim_1 = get_patch_in_victim(camera_intrinsic, distortion_coeffs, camera_extrinsic, position_1)
-    patch_in_victim_2 = get_patch_in_victim(camera_intrinsic, distortion_coeffs, camera_extrinsic, position_2)
+    patch_in_victim_1 = get_patch_in_victim(camera_intrinsic, distortion_coeffs, camera_extrinsic, opt_trans_1)
+    patch_in_victim_2 = get_patch_in_victim(camera_intrinsic, distortion_coeffs, camera_extrinsic, opt_trans_2)
     
-    print(position_2 - position_1)
-    print(patch_in_victim_2-patch_in_victim_1)
+    print("target", patch_in_victim_2-patch_in_victim_1)
+    print("position", opt_trans_2 - opt_trans_1)
