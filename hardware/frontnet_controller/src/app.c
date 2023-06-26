@@ -139,7 +139,7 @@ void appMain()
     target_yaw = atan2f(target_drone_global.y, target_drone_global.x);
 
     
-    setpoint.attitude.yaw = degrees(target_yaw);
+    setpoint.attitude.yaw = 0.0f;//degrees(target_yaw);
     // z is kept at same height as target
     // setpoint.position.z = target_pos.z;
 

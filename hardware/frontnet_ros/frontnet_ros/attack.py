@@ -193,7 +193,7 @@ class Attack():
 
         T_patch_in_victim = np.eye(4)
         T_patch_in_victim[:3, 3] = rel_attacker_pos
-        T_patch_in_victim[2, 3] += 0.096  # debug
+        T_patch_in_victim[2, 3] += 0.093  # debug
 
         # print("victim in world: ", T_victim_world_c)
         # print("pacth in victim: ", T_patch_in_victim)
@@ -223,10 +223,10 @@ class Attack():
     def run(self, rel_attacker_pos):
         offset=np.zeros(3)
         rate=1
-        stretch = 1000 # >1 -> slower
+        stretch = 10 # >1 -> slower
 
         traj = Trajectory()
-        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/circle0.csv")#Path(__file__).parent / "data/circle0.csv")
+        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/movey.csv")#Path(__file__).parent / "data/circle0.csv")
 
         while True:
             if self.pose_a is not None and self.pose_v is not None:
@@ -239,9 +239,9 @@ class Attack():
             if t > traj.duration * stretch:
                 break
 
-            # e = traj.eval(t / stretch)
-            # pos_v_desired = e.pos + offset
-            pos_v_desired = np.array([0., 0., 1.], dtype=np.float32)
+            e = traj.eval(t / stretch)
+            pos_v_desired = e.pos + offset
+            # pos_v_desired = np.array([0., 0., 1.], dtype=np.float32)
 
             pos_a_desired, yaw_a_desired = self.compute_attacker_pose(pos_v_desired, rel_attacker_pos)
             
@@ -256,7 +256,7 @@ class Attack():
             self.timeHelper.sleepForRate(rate)
 
         self.cf_a.notifySetpointsStop()
-        self.cf_a.land(targetHeight=0.03, duration=3.0)
+        self.node.land(targetHeight=0.03, duration=3.0)
         self.timeHelper.sleep(3.0)
 
 
@@ -266,38 +266,16 @@ def main():
     # positions_p0 = np.array([[0.5, -0.6, 0.4], [0.3, -0.2, -1.0]])
     # positions_p1 = np.array([[0.5, -0.8, 0.3], [0.5, 0.6, 0.4]])
     # patch_positions_image = np.stack([positions_p0, positions_p1])
-    position_p0 = np.array([0.5, 0.5, 0.5])
-
- 
-    with open('/home/pia/Documents/Coding/adversarial_frontnet/misc/camera_calibration/calibration.yaml') as f:
-        camera_config = yaml.load(f, Loader=yaml.FullLoader)
-
-    camera_intrinsic = np.array(camera_config['camera_matrix'])
-    distortion_coeffs = np.array(camera_config['dist_coeff'])
     
-    rvec = np.array(camera_config['rvec'])
-    tvec = camera_config['tvec']
 
-    camera_extrinsic = np.zeros((4,4))
-    camera_extrinsic[:3, :3] = rowan.to_matrix(opencv2quat(rvec))
-    camera_extrinsic[:3, 3] = tvec
-    camera_extrinsic[-1, -1] = 1.
+    with open('/home/pia/Documents/Coding/adversarial_frontnet/T_patch_victim.yaml') as f:
+        dict = yaml.load(f, Loader=yaml.FullLoader)
 
-    print(camera_intrinsic)
-    print(camera_extrinsic)
-    
-    transformation_matrix = gen_transformation_matrix(*position_p0)
-
-    bounding_box_placed_patch = get_bb_patch(transformation_matrix)
-
-    patch_in_camera = xyz_from_bb(bounding_box_placed_patch, camera_intrinsic, distortion_coeffs)
-    # print(patch_in_camera)
-    patch_in_victim = (np.linalg.inv(camera_extrinsic) @ [*patch_in_camera, 1])[:3]
-
+    patch_in_victim = np.array([dict['sf'][0], dict['tx'][0], dict['ty'][0]])
     print(patch_in_victim)
 
 
-    a.run(patch_in_victim)
+    a.run(patch_in_victim.flatten())
 
 
 if __name__ == "__main__":
