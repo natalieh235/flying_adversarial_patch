@@ -101,15 +101,25 @@ if __name__ == '__main__':
     ax.imshow(patch, cmap='gray')
     plt.axis('off')
     plt.tight_layout()
-    plt.savefig('print_patch.jpg', dpi=100)
+    plt.savefig(Path(args.path) / 'print_patch.jpg', dpi=100)
 
+
+    dict = {'targets': {'x': [], 'y':[], 'z':[]}, 'patch_pos': {'sf':[], 'tx':[], 'ty':[]}, 'attacker_in_victim': {'x': [], 'y':[], 'z':{}}}
+
+    with open(Path(args.path) / 'settings.yaml') as f:
+        settings = yaml.load(f, Loader=yaml.FullLoader)
+
+    dict['targets'] = settings['targets']
 
     positions = np.load(Path(args.path) / 'positions_norm.npy')[:, -1] # positions is of shape (), hl_iterations, )
 
     positions = np.rollaxis(positions, 0, 3)
 
-    print(positions)
 
+    # only works for single target, single patch this way!
+    dict['patch_pos']['sf'] = positions[0, 0, 0].tolist()
+    dict['patch_pos']['tx'] = positions[0, 0, 1].tolist()
+    dict['patch_pos']['ty'] = positions[0, 0, 1].tolist()
 
 
     with open('misc/camera_calibration/calibration.yaml') as f:
@@ -144,16 +154,15 @@ if __name__ == '__main__':
 
             T_patch_victim[m, k, :] = patch_in_victim
 
-    print(T_patch_victim)
-
-    dict = {'sf': [], 'tx': [], 'ty': []}
-
-    dict['sf'] = T_patch_victim.T[0].tolist()
-    dict['tx'] = T_patch_victim.T[1].tolist()
-    dict['ty'] = T_patch_victim.T[2].tolist()
-
-    print(dict)
+    # print(T_patch_victim)
 
 
-    with open('T_patch_victim.yaml', 'w') as file:
+    dict['attacker_in_victim']['x'] = T_patch_victim.T[0,0].tolist()
+    dict['attacker_in_victim']['y'] = T_patch_victim.T[1,0].tolist()
+    dict['attacker_in_victim']['z'] = T_patch_victim.T[2,0].tolist()
+
+    # print(dict)
+
+
+    with open(Path(args.path) / 'T_patch_victim.yaml', 'w') as file:
         yaml.dump(dict, file)
