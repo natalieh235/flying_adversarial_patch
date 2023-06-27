@@ -14,10 +14,13 @@ from tf2_ros import TransformBroadcaster
 
 import yaml
 
+from rcl_interfaces.srv import SetParameters
+from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 
-import sys
-sys.path.insert(0,'/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/frontnet_ros/')
-from attacker_policy import gen_transformation_matrix, get_bb_patch, xyz_from_bb
+
+# import sys
+# sys.path.insert(0,'/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/frontnet_ros/')
+# from attacker_policy import gen_transformation_matrix, get_bb_patch, xyz_from_bb
 
 
 # rotation vectors are axis-angle format in "compact form", where
@@ -185,7 +188,7 @@ class Attack():
         # eq 6
         distance = 1.0
         def calcHeadingVec(radius, angle):
-            return np.array([radius * np.cos(angle), radius, np.sin(angle), 0])
+            return np.array([radius * np.cos(angle), radius * np.sin(angle), 0])
 
         e_H_delta = calcHeadingVec(1.0*distance, target_yaw-np.pi)
 
@@ -193,7 +196,7 @@ class Attack():
 
         return np.array([p_D_prime[0], p_D_prime[1], 1.0]), target_yaw
 
-    def compute_attacker_pose(self, pos_v_desired, rel_attacker_pos):
+    def compute_attacker_pose(self, pos_v_desired, targets, positions):
         # can use
         # self.pose_a: current pose of attacker
         # self.pose_v: current pose of victim
@@ -226,12 +229,11 @@ class Attack():
 
         self._broadcast('vd', 'world', T_victim_world_d)
 
-        # TODO: PIA, we need access here to targets, and positions here!
         best_attack = None
         best_error = np.inf
-        for target, pos in zip(...):
+        for target, pos in zip(targets, positions):
             pos_v_effect, theta_v_effect = self._compute_frontnet_reaction(T_victim_world_c, target)
-            error = np.linalg.norm(pos_v_desired, pos_v_effect)
+            error = np.linalg.norm(pos_v_desired - pos_v_effect)
             if error < best_error:
                 best_error = error
                 best_attack = target, pos
@@ -249,28 +251,27 @@ class Attack():
         # self._broadcast('ad2', 'v', T_patch_in_victim)
 
 
-        # get rotations from quaternions
-        # build whole 4x4 pose matrix
-        # update pose
-
-        # T_attacker_world = update_attacker_pose
-
         # return desired pos and yaw for the attacker
         roll, pitch, yaw = rowan.to_euler(rowan.from_matrix(T_attacker_in_world[:3, :3]), 'xyz')
         return T_attacker_in_world[:3, 3], yaw
 
-    def run(self, rel_attacker_pos):
+    def run(self, targets, positions):
         offset=np.zeros(3)
-        rate=1
+        rate=10
         stretch = 10 # >1 -> slower
 
         traj = Trajectory()
         traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/movey.csv")#Path(__file__).parent / "data/circle0.csv")
 
+        self.node.takeoff(targetHeight=1.0, duration=5.0)
+
         while True:
             if self.pose_a is not None and self.pose_v is not None:
                 break
             self.timeHelper.sleep(0.1)
+
+        # self.cf_v.goTo(np.array([0.0, 0.0, 1.0]), -np.pi/2., 5.)
+        # self.timeHelper.sleep(5.)
 
         start_time = self.timeHelper.time()
         while not self.timeHelper.isShutdown():
@@ -282,18 +283,28 @@ class Attack():
             pos_v_desired = e.pos + offset
             # pos_v_desired = np.array([0., 0., 1.], dtype=np.float32)
 
-            pos_a_desired, yaw_a_desired = self.compute_attacker_pose(pos_v_desired, rel_attacker_pos)
+            pos_a_desired, yaw_a_desired = self.compute_attacker_pose(pos_v_desired, targets, positions)
+
+            pos_a_current = np.array([self.pose_a.pose.position.x, self.pose_a.pose.position.y, self.pose_a.pose.position.z])
+
+            distance= np.linalg.norm(pos_a_current-pos_a_desired)
+            move_time = max(distance / 0.5, 0.5)
             
-            self.cf_a.goTo(pos_a_desired, yaw_a_desired, 2.)
-            # self.cf_a.cmdFullState(
-            #     pos_a_desired,
-            #     np.zeros(3),
-            #     np.zeros(3),
-            #     yaw_a_desired,
-            #     np.zeros(3))
+            # if distance > 0.1:
+                # self.cf_a.notifySetpointsStop()
+            self.cf_a.goTo(pos_a_desired, yaw_a_desired, move_time)
+            # else:
+            #     self.cf_a.cmdFullState(
+            #         pos_a_desired,
+            #         np.zeros(3),
+            #         np.zeros(3),
+            #         yaw_a_desired,
+            #         np.zeros(3))
 
             self.timeHelper.sleepForRate(rate)
 
+        
+        self.timeHelper.sleep(5.0)
         self.cf_a.notifySetpointsStop()
         self.node.land(targetHeight=0.03, duration=3.0)
         self.timeHelper.sleep(3.0)
@@ -310,11 +321,16 @@ def main():
     with open('/home/pia/Documents/Coding/adversarial_frontnet/T_patch_victim.yaml') as f:
         dict = yaml.load(f, Loader=yaml.FullLoader)
 
-    patch_in_victim = np.array([dict['sf'][0], dict['tx'][0], dict['ty'][0]])
-    print(patch_in_victim)
+    # patch_in_victim = np.array([dict['sf'][0], dict['tx'][0], dict['ty'][0]])
+    # print(patch_in_victim)
 
+    targets = np.array([*dict['targets'].values()]).T
+    
+    patch_pos = np.array([*dict['patch_pos'].values()]).T
 
-    a.run(patch_in_victim.flatten())
+    patch_in_victim = np.array([*dict['patch_in_victim'].values()]).T
+
+    a.run(targets, patch_in_victim)
 
 
 if __name__ == "__main__":
