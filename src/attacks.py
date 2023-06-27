@@ -171,7 +171,6 @@ def targeted_attack_joint(dataset, patch, model, positions, assignment, targets,
                     # target_losses.append(torch.min(target_loss)) # keep only the minimum loss
 
                     # variant2
-                    prob_weight = 5.0
                     probabilities = torch.nn.functional.softmin(target_loss * prob_weight, dim=0)
                     stats_p[active_patches, target_idx] += probabilities.detach().cpu().numpy()
                     expectation = probabilities.dot(target_loss)
