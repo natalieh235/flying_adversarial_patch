@@ -168,6 +168,31 @@ class Attack():
         T[-1, -1] = 1
         return T
 
+    # mimics the control law of frontnet (see app.c), to compute the setpoint, assuming a certain NN prediction
+    # target_pos_nn is the NN prediction (target position in UAV frame)
+    def _compute_frontnet_reaction(self, T_victim_world_c, target_pos_nn):
+        # get the current 3D coordinate of the UAV
+        p_D = T_victim_world_c[:3, 3]
+
+        # translate the target pose in world frame
+        q = rowan.from_matrix(T_victim_world_c[:3, :3])
+        target_pos = p_D + rowan.rotate(q, target_pos_nn)
+
+        # calculate the UAV's yaw angle
+        target_drone_global = target_pos - p_D
+        target_yaw = np.arctan2(target_drone_global[1], target_drone_global[0])
+
+        # eq 6
+        distance = 1.0
+        def calcHeadingVec(radius, angle):
+            return np.array([radius * np.cos(angle), radius, np.sin(angle), 0])
+
+        e_H_delta = calcHeadingVec(1.0*distance, target_yaw-np.pi)
+
+        p_D_prime = target_pos + e_H_delta
+
+        return np.array([p_D_prime[0], p_D_prime[1], 1.0]), target_yaw
+
     def compute_attacker_pose(self, pos_v_desired, rel_attacker_pos):
         # can use
         # self.pose_a: current pose of attacker
@@ -191,9 +216,7 @@ class Attack():
         # possible_patch_position = np.array([[0.28316405,  0.20245424, -0.2117372 ],
         #                                     [0.30532456, -0.20091306, -0.22638479]])
 
-        T_patch_in_victim = np.eye(4)
-        T_patch_in_victim[:3, 3] = rel_attacker_pos
-        T_patch_in_victim[2, 3] += 0.093  # debug
+
 
         # print("victim in world: ", T_victim_world_c)
         # print("pacth in victim: ", T_patch_in_victim)
@@ -203,7 +226,23 @@ class Attack():
 
         self._broadcast('vd', 'world', T_victim_world_d)
 
-        T_attacker_in_world = T_victim_world_d @ T_patch_in_victim
+        # TODO: PIA, we need access here to targets, and positions here!
+        best_attack = None
+        best_error = np.inf
+        for target, pos in zip(...):
+            pos_v_effect, theta_v_effect = self._compute_frontnet_reaction(T_victim_world_c, target)
+            error = np.linalg.norm(pos_v_desired, pos_v_effect)
+            if error < best_error:
+                best_error = error
+                best_attack = target, pos
+
+        print("Picked attack ", best_attack)
+        # apply this patch relative to the current position
+        T_patch_in_victim = np.eye(4)
+        T_patch_in_victim[:3, 3] = best_attack[1]
+        T_patch_in_victim[2, 3] += 0.093  # debug
+
+        T_attacker_in_world = T_victim_world_c @ T_patch_in_victim
         # print("attacker in world: ", T_attacker_in_world)
 
         self._broadcast('ad', 'world', T_attacker_in_world)
