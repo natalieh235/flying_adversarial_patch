@@ -2,6 +2,7 @@ import numpy as np
 import argparse
 
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 import yaml
 import rowan
@@ -46,6 +47,20 @@ def get_bb_patch(transformation):
     ymin = patch_coords[0][0].item()
     xmax = patch_coords[-1][1].item()
     ymax = patch_coords[-1][0].item()
+
+
+    
+    new_width = (xmax - xmin)
+    new_height = (ymax - ymin)
+    original_aspect_ratio = 160 / 96
+
+    if xmin == 0.:
+        if ymin > 0. and ymax<95.:
+            xmin = xmax - (original_aspect_ratio * new_height)
+        else:
+            print("Can't calculate bounding box properly!")
+            return
+            # raise()
 
     # fig, ax = plt.subplots()
     # ax.imshow(transformed_patch[0][0], cmap='gray')
@@ -95,31 +110,73 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    patch = np.load(Path(args.path) / 'patches.npy')[-1][0][0]
+    patches = np.load(Path(args.path) / 'patches.npy')[-1]
+    M = patches.shape[0]
 
-    fig, ax = plt.subplots(figsize=(11.69,8.27))
-    ax.imshow(patch, cmap='gray')
-    plt.axis('off')
-    plt.tight_layout()
-    plt.savefig(Path(args.path) / 'print_patch.jpg', dpi=100)
+    # # print(patches.shape)
+
+    # with PdfPages(Path(args.path) / 'print.pdf') as pdf:
+    #     for patch_idx, patch in enumerate(patches):
+    #         fig, ax = plt.subplots(figsize=(11.69,8.27))
+    #         ax.imshow(patch[0], cmap='gray')
+    #         plt.axis('off')
+    #         plt.tight_layout()
+    #         pdf.savefig(fig)
+    #         plt.close(fig)
+
+    # fig, ax = plt.subplots(figsize=(11.69,8.27))
+    # ax.imshow(patch, cmap='gray')
+    # plt.axis('off')
+    # plt.tight_layout()
+    # plt.savefig(Path(args.path) / 'print_patch.jpg', dpi=100)
 
 
-    dict = {'targets': {'x': [], 'y':[], 'z':[]}, 'patch_pos': {'sf':[], 'tx':[], 'ty':[]}, 'patch_in_victim': {'x': [], 'y':[], 'z':{}}}
+    dict = {'targets': {'x': [], 'y':[], 'z':[]}, 'assignment_patch': [], 'patch_in_victim': {'x': [], 'y':[], 'z':{}}, 'patch_pos': {'sf':[], 'tx':[], 'ty':[]}}
 
     with open(Path(args.path) / 'settings.yaml') as f:
         settings = yaml.load(f, Loader=yaml.FullLoader)
 
     dict['targets'] = settings['targets']
+    K = (len(list(settings['targets'].values())[0]))
 
     positions = np.load(Path(args.path) / 'positions_norm.npy')[:, -1]
-    positions = np.reshape(positions, (3, 3))
+    # print(positions.shape)
+    positions = np.swapaxes(positions, 1, 2)
+    positions = np.squeeze(positions, axis=3)
+    # positions = np.reshape(positions, (M, K, 3))
 
+    # print(positions)
+    # print(positions.shape)
 
-    dict['patch_pos']['sf'] = positions[0].tolist()#positions[:, :, 0, 0].tolist()
-    dict['patch_pos']['tx'] = positions[1].tolist()#positions[:, :, 1, 0].tolist()
-    dict['patch_pos']['ty'] = positions[2].tolist()#positions[:, :, 2, 0].tolist()
+    A = np.load(Path(args.path) / 'stats_p.npy')[-1]
 
-    print(dict)
+    # print(A)
+    A = np.where(A >= 0.5, True, False)
+    # print(A)
+
+    # print(A[..., 1])
+
+    # get patch indices according to assignment
+    K_target_patch = [np.argwhere(A[..., i] == True).item() for i in range(A.shape[1])]
+    print(K_target_patch)
+    dict['assignment_patch'] = K_target_patch
+
+    K_target_position = np.zeros((K, 3))
+    for k in range(K):
+        K_target_position[k, 0] = positions[0][..., k][K_target_patch[k]]
+        K_target_position[k, 1] = positions[1][..., k][K_target_patch[k]]
+        K_target_position[k, 2] = positions[2][..., k][K_target_patch[k]]
+
+    # print(K_target_position[0])
+    dict['patch_pos']['sf'] = K_target_position[..., 0].tolist()
+    dict['patch_pos']['tx'] = K_target_position[..., 1].tolist()
+    dict['patch_pos']['ty'] = K_target_position[..., 2].tolist()
+
+    # dict['patch_pos']['sf'] = positions[0].tolist()#positions[:, :, 0, 0].tolist()
+    # dict['patch_pos']['tx'] = positions[1].tolist()#positions[:, :, 1, 0].tolist()
+    # dict['patch_pos']['ty'] = positions[2].tolist()#positions[:, :, 2, 0].tolist()
+
+    # print(dict)
 
     with open('misc/camera_calibration/calibration.yaml') as f:
         camera_config = yaml.load(f, Loader=yaml.FullLoader)
@@ -136,26 +193,16 @@ if __name__ == '__main__':
     camera_extrinsic[-1, -1] = 1.
 
     
-    T_patch_victim = np.zeros((positions.shape[0], 3))
+    T_patch_victim = np.zeros((K, 3))
 
-    
-    # print(positions[..., 0])
-
-
-    for k in range(positions.shape[0]):
-        # for m in range(positions.shape[2]):
-        transformation_matrix = gen_transformation_matrix(*positions[..., k])
-        
+    for k in range(K):
+        transformation_matrix = gen_transformation_matrix(*K_target_position[k])
         bounding_box_placed_patch = get_bb_patch(transformation_matrix)
-
         patch_in_camera = xyz_from_bb(bounding_box_placed_patch, camera_intrinsic, distortion_coeffs)
-        # print(patch_in_camera)
         patch_in_victim = (np.linalg.inv(camera_extrinsic) @ [*patch_in_camera, 1])[:3]
-
         T_patch_victim[k, :] = patch_in_victim
-
-    # print(T_patch_victim)
-
+    
+    
 
     dict['patch_in_victim']['x'] = T_patch_victim.T[0].tolist()
     dict['patch_in_victim']['y'] = T_patch_victim.T[1].tolist()
