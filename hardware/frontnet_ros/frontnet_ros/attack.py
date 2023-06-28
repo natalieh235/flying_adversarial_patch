@@ -196,7 +196,7 @@ class Attack():
 
         return np.array([p_D_prime[0], p_D_prime[1], 1.0]), target_yaw
 
-    def compute_attacker_pose(self, pos_v_desired, targets, positions):
+    def compute_attacker_pose(self, pos_v_desired, targets, A, positions):
         # can use
         # self.pose_a: current pose of attacker
         # self.pose_v: current pose of victim
@@ -231,17 +231,17 @@ class Attack():
 
         best_attack = None
         best_error = np.inf
-        for target, pos in zip(targets, positions):
+        for target, a, pos in zip(targets, A, positions):
             pos_v_effect, theta_v_effect = self._compute_frontnet_reaction(T_victim_world_c, target)
             error = np.linalg.norm(pos_v_desired - pos_v_effect)
             if error < best_error:
                 best_error = error
-                best_attack = target, pos
+                best_attack = target, a, pos, 
 
         print("Picked attack ", best_attack)
         # apply this patch relative to the current position
         T_patch_in_victim = np.eye(4)
-        T_patch_in_victim[:3, 3] = best_attack[1]
+        T_patch_in_victim[:3, 3] = best_attack[2]
         T_patch_in_victim[2, 3] += 0.093  # debug
 
         T_attacker_in_world = T_victim_world_c @ T_patch_in_victim
@@ -252,16 +252,16 @@ class Attack():
 
 
         # return desired pos and yaw for the attacker
-        roll, pitch, yaw = rowan.to_euler(rowan.from_matrix(T_attacker_in_world[:3, :3]), 'xyz')
-        return T_attacker_in_world[:3, 3], yaw
+        roll, pitch, yaw = rowan.to_euler(rowan.from_matrix(T_attacker_in_world[:3, :3]), 'xyz') 
+        return T_attacker_in_world[:3, 3], yaw + best_attack[1] * np.pi
 
-    def run(self, targets, positions):
+    def run(self, targets, A, positions):
         offset=np.zeros(3)
         rate=10
-        stretch = 10 # >1 -> slower
+        stretch = 100 # >1 -> slower
 
         traj = Trajectory()
-        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/movey.csv")#Path(__file__).parent / "data/circle0.csv")
+        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/circle0.csv")#Path(__file__).parent / "data/circle0.csv")
 
         self.node.takeoff(targetHeight=1.0, duration=5.0)
 
@@ -283,12 +283,15 @@ class Attack():
             pos_v_desired = e.pos + offset
             # pos_v_desired = np.array([0., 0., 1.], dtype=np.float32)
 
-            pos_a_desired, yaw_a_desired = self.compute_attacker_pose(pos_v_desired, targets, positions)
+            pos_a_desired, yaw_a_desired = self.compute_attacker_pose(pos_v_desired, targets, A, positions)
 
             pos_a_current = np.array([self.pose_a.pose.position.x, self.pose_a.pose.position.y, self.pose_a.pose.position.z])
+            quats_a_current = np.array([self.pose_a.pose.orientation.w, self.pose_a.pose.orientation.x, self.pose_a.pose.orientation.y, self.pose_a.pose.orientation.z])
+            _, _, yaw_a_current = rowan.to_euler(quats_a_current, 'xyz') 
 
             distance= np.linalg.norm(pos_a_current-pos_a_desired)
-            move_time = max(distance / 0.5, 0.5)
+            angular_distance = np.abs(np.arctan2(np.sin(yaw_a_current- yaw_a_desired), np.cos(yaw_a_current - yaw_a_desired)))
+            move_time = max(distance / 0.5, 0.5, angular_distance/1.)
             
             # if distance > 0.1:
                 # self.cf_a.notifySetpointsStop()
@@ -326,11 +329,13 @@ def main():
 
     targets = np.array([*dict['targets'].values()]).T
     
-    patch_pos = np.array([*dict['patch_pos'].values()]).T
+    # patch_pos = np.array([*dict['patch_pos'].values()]).T
+    A = np.array([*dict['assignment_patch']])
+    # print(A)
 
     patch_in_victim = np.array([*dict['patch_in_victim'].values()]).T
 
-    a.run(targets, patch_in_victim)
+    a.run(targets, A, patch_in_victim)
 
 
 if __name__ == "__main__":
