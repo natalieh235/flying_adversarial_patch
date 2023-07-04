@@ -16,7 +16,7 @@ class VisualizationNode(Node):
     def __init__(self):
         super().__init__('vis')
 
-        self.cf = "cf231"
+        self.cf = "cf18"
 
         self.setParamsService = self.create_client(SetParameters, "/crazyflie_server/set_parameters")
 
@@ -36,7 +36,7 @@ class VisualizationNode(Node):
 
         # self.get_logger().info('I heard: "%s"' % msg)
         if msg.buttons[2] == 1:   # blue button
-            param_name = "cf231/params/frontnet/start"
+            param_name = "cf18/params/frontnet/start"
             value = 1
             param_type = ParameterType.PARAMETER_INTEGER
             param_value = ParameterValue(type=param_type, integer_value=int(value))
@@ -45,7 +45,7 @@ class VisualizationNode(Node):
             self.setParamsService.call_async(req)
 
         if msg.buttons[6] == 1:   # back (land) button
-            param_name = "cf231/params/frontnet/start"
+            param_name = "cf18/params/frontnet/start"
             value = 0
             param_type = ParameterType.PARAMETER_INTEGER
             param_value = ParameterValue(type=param_type, integer_value=int(value))

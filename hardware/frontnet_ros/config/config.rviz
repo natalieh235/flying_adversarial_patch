@@ -61,7 +61,7 @@ Visualization Manager:
           Value: true
         ad:
           Value: true
-        cf231:
+        cf18:
           Value: false
         cf4:
           Value: false
@@ -80,7 +80,7 @@ Visualization Manager:
             {}
           ad:
             {}
-          cf231:
+          cf18:
             {}
           cf4:
             {}
@@ -106,7 +106,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /cf231/pose
+        Value: /cf18/pose
       Value: false
     - Alpha: 1
       Axes Length: 0.5
@@ -126,7 +126,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /cf231/frontnet_targetpos_typed
+        Value: /cf18/frontnet_targetpos_typed
       Value: true
   Enabled: true
   Global Options:

@@ -1,9 +1,9 @@
 # named list of all robots
 robots:
-  cf231:
+  cf18:
     enabled: true
-    uri: radio://0/80/2M/E7E7E7E7E7    ## CHANGED!
-    initial_position: [0.0, 0.0, 0.0] #z=0.15
+    uri: radio://0/80/2M/E7E7E7E712    ## CHANGED!
+    initial_position: [-0.5, 0.0, 0.0] #z=0.15
     type: cf21 #cf21_mocap_deck  # see robot_types
     firmware_params:
       pid_attitude:
@@ -11,12 +11,14 @@ robots:
         yaw_kd: 1.5 #0.35
         yaw_ki: 1.0 #1.0
       posCtlPid:
-        xKp: 1.0 # 2.0
+        xKp: 0.6 # 2.0
         xKd: 0.2 # 0.0
         xVelMax: 0.5 # 1.0
-        yKp: 1.0 # 2.0
+        yKp: 0.6 # 2.0
         yKd: 0.2 # 0.0
         yVelMax: 0.5 # 1.0
+      stabilizer:
+        controller: 1
 
     #   kalman:
     #     pNAcc_xy: 1.0 # default 0.5
@@ -32,9 +34,11 @@ robots:
   cf4:
     enabled: true
     uri: radio://0/80/2M/E7E7E7E704
-    initial_position: [0.5, -0.5, 0.3]
+    initial_position: [0.0, -0.5, 0.3]
     type: cf21  # see robot_types
-    # firmware_params:
+    firmware_params:
+      stabilizer:
+        controller: 2
     #   kalman:
     #     pNAcc_xy: 1.0 # default 0.5
     #firmware_logging:
@@ -107,7 +111,7 @@ all:
       enHighLevel: 1
     stabilizer:
       estimator: 2 # 1: complementary, 2: kalman
-      controller: 1 # 1: PID, 2: mellinger
+      # controller: 1 # 1: PID, 2: mellinger
     # ring:
     #   effect: 16 # 6: double spinner, 7: solid color, 16: packetRate
     #   solidBlue: 255 # if set to solid color

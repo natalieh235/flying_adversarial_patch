@@ -106,7 +106,7 @@ def update_attacker_pose(T_victim_world_c, T_victim_world_d):
 
 class Attack():
     attacker_id = 4
-    victim_id = 231
+    victim_id = 18
 
     def __init__(self):
         self.swarm = Crazyswarm()
@@ -236,7 +236,7 @@ class Attack():
             error = np.linalg.norm(pos_v_desired - pos_v_effect)
             if error < best_error:
                 best_error = error
-                best_attack = target, a, pos, 
+                best_attack = target, a, pos
 
         print("Picked attack ", best_attack)
         # apply this patch relative to the current position
@@ -258,12 +258,13 @@ class Attack():
     def run(self, targets, A, positions):
         offset=np.zeros(3)
         rate=10
-        stretch = 100 # >1 -> slower
+        stretch = 12 # >1 -> slower
 
         traj = Trajectory()
-        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/circle0.csv")#Path(__file__).parent / "data/circle0.csv")
+        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/movex_long.csv")#Path(__file__).parent / "data/circle0.csv")
 
-        self.node.takeoff(targetHeight=1.0, duration=5.0)
+        self.node.takeoff(targetHeight=1.0, duration=3.0)
+        self.timeHelper.sleep(5.0)
 
         while True:
             if self.pose_a is not None and self.pose_v is not None:
@@ -281,6 +282,7 @@ class Attack():
 
             e = traj.eval(t / stretch)
             pos_v_desired = e.pos + offset
+            print("Desired waypoint", pos_v_desired)
             # pos_v_desired = np.array([0., 0., 1.], dtype=np.float32)
 
             pos_a_desired, yaw_a_desired = self.compute_attacker_pose(pos_v_desired, targets, A, positions)
@@ -295,16 +297,17 @@ class Attack():
             
             # if distance > 0.1:
                 # self.cf_a.notifySetpointsStop()
-            self.cf_a.goTo(pos_a_desired, yaw_a_desired, move_time)
+            self.cf_a.goTo(pos_a_desired, yaw_a_desired, 2.5)
             # else:
-            #     self.cf_a.cmdFullState(
-            #         pos_a_desired,
-            #         np.zeros(3),
-            #         np.zeros(3),
-            #         yaw_a_desired,
-            #         np.zeros(3))
+            # self.cf_a.cmdFullState(
+            #     pos_a_desired,
+            #     np.zeros(3),
+            #     np.zeros(3),
+            #     yaw_a_desired,
+            #     np.zeros(3))
 
-            self.timeHelper.sleepForRate(rate)
+            # self.timeHelper.sleepForRate(rate)
+            self.timeHelper.sleep(3.)
 
         
         self.timeHelper.sleep(5.0)

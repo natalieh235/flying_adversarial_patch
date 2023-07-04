@@ -12,7 +12,7 @@ class VisualizationNode(Node):
     def __init__(self):
         super().__init__('vis')
 
-        self.cf = "cf231"
+        self.cf = "cf18"
 
         self.publisher = self.create_publisher(
                 PoseStamped, "{}/frontnet_targetpos_typed".format(self.cf), 10)
