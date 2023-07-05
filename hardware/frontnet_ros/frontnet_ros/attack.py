@@ -18,6 +18,8 @@ from rcl_interfaces.srv import SetParameters
 from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 
 
+
+
 # import sys
 # sys.path.insert(0,'/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/frontnet_ros/')
 # from attacker_policy import gen_transformation_matrix, get_bb_patch, xyz_from_bb
@@ -253,25 +255,28 @@ class Attack():
 
         # return desired pos and yaw for the attacker
         roll, pitch, yaw = rowan.to_euler(rowan.from_matrix(T_attacker_in_world[:3, :3]), 'xyz') 
-        return T_attacker_in_world[:3, 3], yaw + best_attack[1] * np.pi
+        return T_attacker_in_world[:3, 3], roll, pitch, yaw + best_attack[1] * np.pi
 
     def run(self, targets, A, positions):
         offset=np.zeros(3)
         rate=10
-        stretch = 12 # >1 -> slower
+        stretch = 10 # >1 -> slower
+
+        all_victim_data = []
+        all_attacker_data = []
 
         traj = Trajectory()
-        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/movex_long.csv")#Path(__file__).parent / "data/circle0.csv")
+        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/circle0.csv")#Path(__file__).parent / "data/circle0.csv")
 
         self.node.takeoff(targetHeight=1.0, duration=3.0)
-        self.timeHelper.sleep(5.0)
+        self.timeHelper.sleep(7.0)
 
         while True:
             if self.pose_a is not None and self.pose_v is not None:
                 break
             self.timeHelper.sleep(0.1)
 
-        # self.cf_v.goTo(np.array([0.0, 0.0, 1.0]), -np.pi/2., 5.)
+        # self.cf_v.goTo(np.array([0.0, 0.0, 1.0]), -np.pi/2., 2.)
         # self.timeHelper.sleep(5.)
 
         start_time = self.timeHelper.time()
@@ -283,13 +288,27 @@ class Attack():
             e = traj.eval(t / stretch)
             pos_v_desired = e.pos + offset
             print("Desired waypoint", pos_v_desired)
+            # victim_data.append(pos_v_desired)
             # pos_v_desired = np.array([0., 0., 1.], dtype=np.float32)
 
-            pos_a_desired, yaw_a_desired = self.compute_attacker_pose(pos_v_desired, targets, A, positions)
+            # logging position and yaw of victim
+            pos_v_current = np.array([self.pose_v.pose.position.x, self.pose_v.pose.position.y, self.pose_v.pose.position.z])
+            quats_v_current = np.array([self.pose_v.pose.orientation.w, self.pose_v.pose.orientation.x, self.pose_v.pose.orientation.y, self.pose_v.pose.orientation.z])
+            roll_v_current, pitch_v_current, yaw_v_current = rowan.to_euler(quats_v_current, 'xyz') 
+            all_victim_data.append([t, *pos_v_current, roll_v_current, pitch_v_current, yaw_v_current,*pos_v_desired, 0., 0., 0.])
+
+            pos_a_desired, roll_a_desired, pitch_a_desired, yaw_a_desired = self.compute_attacker_pose(pos_v_desired, targets, A, positions)
 
             pos_a_current = np.array([self.pose_a.pose.position.x, self.pose_a.pose.position.y, self.pose_a.pose.position.z])
             quats_a_current = np.array([self.pose_a.pose.orientation.w, self.pose_a.pose.orientation.x, self.pose_a.pose.orientation.y, self.pose_a.pose.orientation.z])
-            _, _, yaw_a_current = rowan.to_euler(quats_a_current, 'xyz') 
+            roll_a_current, pitch_a_current, yaw_a_current = rowan.to_euler(quats_a_current, 'xyz') 
+
+            # logging position and yaw of attacker
+            all_attacker_data.append([t, *pos_a_current, roll_a_current, pitch_a_current, yaw_a_current,*pos_a_desired, roll_a_desired, pitch_a_desired, yaw_a_desired])
+
+            np.save(f'victim_data_{start_time}.npy', np.array(all_victim_data))
+            np.save(f'attacker_data_{start_time}.npy', np.array(all_attacker_data))
+
 
             distance= np.linalg.norm(pos_a_current-pos_a_desired)
             angular_distance = np.abs(np.arctan2(np.sin(yaw_a_current- yaw_a_desired), np.cos(yaw_a_current - yaw_a_desired)))
@@ -297,7 +316,7 @@ class Attack():
             
             # if distance > 0.1:
                 # self.cf_a.notifySetpointsStop()
-            self.cf_a.goTo(pos_a_desired, yaw_a_desired, 2.5)
+            self.cf_a.goTo(pos_a_desired, yaw_a_desired, 3.0) 
             # else:
             # self.cf_a.cmdFullState(
             #     pos_a_desired,
@@ -307,13 +326,14 @@ class Attack():
             #     np.zeros(3))
 
             # self.timeHelper.sleepForRate(rate)
-            self.timeHelper.sleep(3.)
+            self.timeHelper.sleep(3.2)
 
         
         self.timeHelper.sleep(5.0)
         self.cf_a.notifySetpointsStop()
         self.node.land(targetHeight=0.03, duration=3.0)
         self.timeHelper.sleep(3.0)
+
 
 
 def main():

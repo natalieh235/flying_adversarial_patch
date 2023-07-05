@@ -1,10 +1,10 @@
 # named list of all robots
 robots:
   cf18:
-    enabled: false
+    enabled: true
 
     uri: radio://0/80/2M/E7E7E7E712    ## CHANGED!
-    initial_position: [0.0, 0.0, 0.0] #z=0.15
+    initial_position: [-0.5, 0.0, 0.0] #z=0.15
     type: cf21 #cf21_mocap_deck  # see robot_types
     firmware_params:
       pid_attitude:
@@ -104,10 +104,10 @@ robot_types:
         Kpos_Iz: 0.0  # 8.0
         KR_x: 0.0097 #0.0055   # def: 0.005  
         KR_y: 0.0097 #0.0055  # def: 0.005
-        KR_z: 0.015 #0.008   # def: 0.005
-        Kw_x: 0.0031 #0.0013 # def: 0.0009
-        Kw_y: 0.0031 #0.0013  # def: 0.0009
-        Kw_z: 0.003  # def: 0.0012
+        KR_z: 0.01 #0.008   # def: 0.005
+        Kw_x: 0.003 #0.0013 # def: 0.0009
+        Kw_y: 0.003 #0.0013  # def: 0.0009
+        Kw_z: 0.0028  # def: 0.0012
         KI_x: 0.001 #0.012 #0.009 #0.015
         KI_y: 0.001 #0.018 #0.009 #0.015
         KI_z: 0.001 #0.015 #0.009 #0.015
