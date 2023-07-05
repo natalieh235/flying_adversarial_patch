@@ -2,6 +2,7 @@
 robots:
   cf18:
     enabled: false
+
     uri: radio://0/80/2M/E7E7E7E712    ## CHANGED!
     initial_position: [0.0, 0.0, 0.0] #z=0.15
     type: cf21 #cf21_mocap_deck  # see robot_types
@@ -92,21 +93,21 @@ robot_types:
         e10: 5.153254032178315
         e01: 34.40420347673405
       ctrlLee:
-        Kpos_Px: 16. #30.0 # def: 10.0, 9.
-        Kpos_Py: 16. #30.0 # def: 10.0, 9.
-        Kpos_Pz: 16. #30.0 # def: 10.0, 9.
-        Kpos_Dx: 10.0  # def: 8.0, 5.0
-        Kpos_Dy: 10.0  # def: 8.0, 5.
-        Kpos_Dz: 10.0  # def: 8.0  ,5.
+        Kpos_Px: 10. #30.0 # def: 10.0, 9.
+        Kpos_Py: 10. #30.0 # def: 10.0, 9.
+        Kpos_Pz: 10. #30.0 # def: 10.0, 9.
+        Kpos_Dx: 8.0  # def: 8.0, 5.0
+        Kpos_Dy: 8.0  # def: 8.0, 5.
+        Kpos_Dz: 8.0  # def: 8.0  ,5.
         Kpos_Ix: 0.0  # 5.0
         Kpos_Iy: 0.0  # 5.0
         Kpos_Iz: 0.0  # 8.0
         KR_x: 0.0095 #0.0055   # def: 0.005  
         KR_y: 0.0095 #0.0055  # def: 0.005
         KR_z: 0.015 #0.008   # def: 0.005
-        Kw_x: 0.003 #0.0013 # def: 0.0009
-        Kw_y: 0.003 #0.0013  # def: 0.0009
-        Kw_z: 0.004  # def: 0.0012
+        Kw_x: 0.0029 #0.0013 # def: 0.0009
+        Kw_y: 0.0029 #0.0013  # def: 0.0009
+        Kw_z: 0.003  # def: 0.0012
         KI_x: 0.001 #0.012 #0.009 #0.015
         KI_y: 0.001 #0.018 #0.009 #0.015
         KI_z: 0.001 #0.015 #0.009 #0.015
