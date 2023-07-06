@@ -260,17 +260,17 @@ class Attack():
     def run(self, targets, A, positions):
         offset=np.zeros(3)
         rate=2
-        stretch = 2 # >1 -> slower
+        stretch = 5 # >1 -> slower
 
         all_victim_data = []
         all_attacker_data = []
 
         traj = Trajectory()
-        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/traj_zickzack.csv")#Path(__file__).parent / "data/circle0.csv")
+        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/movey_long.csv")#Path(__file__).parent / "data/circle0.csv")
 
 
 
-        yaws = np.linspace(-2*np.pi, 2*np.pi, num=15)
+        # yaws = np.linspace(-2*np.pi, 2*np.pi, num=20)
 
 
 
@@ -283,7 +283,7 @@ class Attack():
                 break
             self.timeHelper.sleep(0.1)
 
-        self.cf_v.goTo(np.array([0.5, 0.0, 1.0]), -np.pi/2., 2.)
+        self.cf_v.goTo(np.array([0.0, 0.0, 1.0]), -np.pi/2., 2.)
         self.timeHelper.sleep(3.)
 
         yaws_idx = 0
@@ -327,11 +327,11 @@ class Attack():
             
             # if distance > 0.1:
                 # self.cf_a.notifySetpointsStop()
-            # self.cf_a.goTo(pos_a_desired, yaw_a_desired, move_time) 
-            self.cf_a.goTo(pos_v_desired, yaws[yaws_idx], 1.0)
-            yaws_idx += 1
-            if yaws_idx >= len(yaws):
-                yaws_idx = 0
+            self.cf_a.goTo(pos_a_desired, yaw_a_desired, move_time) 
+            # self.cf_a.goTo(pos_v_desired, yaws[yaws_idx], 1.0)
+            # yaws_idx += 1
+            # if yaws_idx >= len(yaws):
+            #     yaws_idx = 0
             # else:
             # self.cf_a.cmdFullState(
             #     pos_a_desired,

@@ -4,7 +4,7 @@ robots:
     enabled: true
 
     uri: radio://0/80/2M/E7E7E7E712    ## CHANGED!
-    initial_position: [0.0, -1.0, 0.0] #z=0.15
+    initial_position: [0.0, 0.0, 0.0] #z=0.15
     type: cf21_mocap_deck  # see robot_types
     firmware_params:
       pid_attitude:
@@ -38,7 +38,7 @@ robots:
   cf4:
     enabled: true
     uri: radio://0/80/2M/E7E7E7E704
-    initial_position: [0.0, 0.0, 0.3]
+    initial_position: [0.0, -1.0, 0.3]
     type: cf21_betafpv  # see robot_types
     firmware_params:
       stabilizer:
@@ -107,8 +107,8 @@ robot_types:
         Kpos_Dx: 8.0  # def: 8.0, 5.0
         Kpos_Dy: 8.0  # def: 8.0, 5.
         Kpos_Dz: 8.0  # def: 8.0  ,5.
-        Kpos_Ix: 0.0  # 5.0
-        Kpos_Iy: 0.0  # 5.0
+        Kpos_Ix: 2.0  # 5.0
+        Kpos_Iy: 2.0  # 5.0
         Kpos_Iz: 4.0  # 8.0
         KR_x: 0.0095 #0.0055   # def: 0.005  
         KR_y: 0.0095 #0.0055  # def: 0.005
