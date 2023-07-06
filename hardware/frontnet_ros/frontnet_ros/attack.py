@@ -259,14 +259,14 @@ class Attack():
 
     def run(self, targets, A, positions):
         offset=np.zeros(3)
-        rate=10
-        stretch = 10 # >1 -> slower
+        rate=2
+        stretch = 56 # >1 -> slower
 
         all_victim_data = []
         all_attacker_data = []
 
         traj = Trajectory()
-        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/circle0.csv")#Path(__file__).parent / "data/circle0.csv")
+        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/movey_long.csv")#Path(__file__).parent / "data/circle0.csv")
 
         self.node.takeoff(targetHeight=1.0, duration=3.0)
         self.timeHelper.sleep(7.0)
@@ -276,8 +276,8 @@ class Attack():
                 break
             self.timeHelper.sleep(0.1)
 
-        # self.cf_v.goTo(np.array([0.0, 0.0, 1.0]), -np.pi/2., 2.)
-        # self.timeHelper.sleep(5.)
+        self.cf_v.goTo(np.array([0.5, 0.0, 1.0]), -np.pi/2., 2.)
+        self.timeHelper.sleep(3.)
 
         start_time = self.timeHelper.time()
         while not self.timeHelper.isShutdown():
@@ -312,11 +312,13 @@ class Attack():
 
             distance= np.linalg.norm(pos_a_current-pos_a_desired)
             angular_distance = np.abs(np.arctan2(np.sin(yaw_a_current- yaw_a_desired), np.cos(yaw_a_current - yaw_a_desired)))
-            move_time = max(distance / 0.5, 0.5, angular_distance/1.)
+            max_speed = 0.5
+            max_angular_speed = 0.9
+            move_time = max(distance / max_speed, 1.0, angular_distance/max_angular_speed)
             
             # if distance > 0.1:
                 # self.cf_a.notifySetpointsStop()
-            self.cf_a.goTo(pos_a_desired, yaw_a_desired, 3.0) 
+            self.cf_a.goTo(pos_a_desired, yaw_a_desired, move_time) 
             # else:
             # self.cf_a.cmdFullState(
             #     pos_a_desired,
@@ -325,8 +327,8 @@ class Attack():
             #     yaw_a_desired,
             #     np.zeros(3))
 
-            # self.timeHelper.sleepForRate(rate)
-            self.timeHelper.sleep(3.2)
+            self.timeHelper.sleepForRate(rate)
+            # self.timeHelper.sleep(move_time+0.1)
 
         
         self.timeHelper.sleep(5.0)
