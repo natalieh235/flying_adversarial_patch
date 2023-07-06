@@ -260,13 +260,20 @@ class Attack():
     def run(self, targets, A, positions):
         offset=np.zeros(3)
         rate=2
-        stretch = 56 # >1 -> slower
+        stretch = 2 # >1 -> slower
 
         all_victim_data = []
         all_attacker_data = []
 
         traj = Trajectory()
-        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/movey_long.csv")#Path(__file__).parent / "data/circle0.csv")
+        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/traj_zickzack.csv")#Path(__file__).parent / "data/circle0.csv")
+
+
+
+        yaws = np.linspace(-2*np.pi, 2*np.pi, num=15)
+
+
+
 
         self.node.takeoff(targetHeight=1.0, duration=3.0)
         self.timeHelper.sleep(7.0)
@@ -278,6 +285,8 @@ class Attack():
 
         self.cf_v.goTo(np.array([0.5, 0.0, 1.0]), -np.pi/2., 2.)
         self.timeHelper.sleep(3.)
+
+        yaws_idx = 0
 
         start_time = self.timeHelper.time()
         while not self.timeHelper.isShutdown():
@@ -313,12 +322,16 @@ class Attack():
             distance= np.linalg.norm(pos_a_current-pos_a_desired)
             angular_distance = np.abs(np.arctan2(np.sin(yaw_a_current- yaw_a_desired), np.cos(yaw_a_current - yaw_a_desired)))
             max_speed = 0.5
-            max_angular_speed = 0.9
+            max_angular_speed = 0.8
             move_time = max(distance / max_speed, 1.0, angular_distance/max_angular_speed)
             
             # if distance > 0.1:
                 # self.cf_a.notifySetpointsStop()
-            self.cf_a.goTo(pos_a_desired, yaw_a_desired, move_time) 
+            # self.cf_a.goTo(pos_a_desired, yaw_a_desired, move_time) 
+            self.cf_a.goTo(pos_v_desired, yaws[yaws_idx], 1.0)
+            yaws_idx += 1
+            if yaws_idx >= len(yaws):
+                yaws_idx = 0
             # else:
             # self.cf_a.cmdFullState(
             #     pos_a_desired,
