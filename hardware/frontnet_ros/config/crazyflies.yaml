@@ -4,8 +4,8 @@ robots:
     enabled: true
 
     uri: radio://0/80/2M/E7E7E7E712    ## CHANGED!
-    initial_position: [-0.5, 0.0, 0.0] #z=0.15
-    type: cf21 #cf21_mocap_deck  # see robot_types
+    initial_position: [0.0, 0.0, 0.0] #z=0.15
+    type: cf21_mocap_deck  # see robot_types
     firmware_params:
       pid_attitude:
         yaw_kp: 3.0 # 6.0
@@ -20,6 +20,9 @@ robots:
         yVelMax: 0.5 # 1.0
       stabilizer:
         controller: 1
+      locSrv:
+        extPosStdDev: 1e-3
+        extQuatStdDev: 0.5e-1
 
     #   kalman:
     #     pNAcc_xy: 1.0 # default 0.5
@@ -40,6 +43,11 @@ robots:
     firmware_params:
       stabilizer:
         controller: 6 # 4 -> sjc controller, 6-> lee controller
+      locSrv:
+        extPosStdDev: 1e-3
+        # extQuatStdDev: 1.0e-1
+        extRPStdDev: 0.1
+        extYStdDev: 0.01
     #   kalman:
     #     pNAcc_xy: 1.0 # default 0.5
     #firmware_logging:
@@ -75,7 +83,7 @@ robot_types:
     motion_capture:
       enabled: true
       # only if enabled; see motion_capture.yaml
-      marker: default_single_marker #mocap_deck
+      marker: mocap_deck  # default_single_marker
       dynamics: default
     big_quad: false
     battery:
@@ -102,12 +110,12 @@ robot_types:
         Kpos_Ix: 0.0  # 5.0
         Kpos_Iy: 0.0  # 5.0
         Kpos_Iz: 0.0  # 8.0
-        KR_x: 0.0097 #0.0055   # def: 0.005  
-        KR_y: 0.0097 #0.0055  # def: 0.005
+        KR_x: 0.0095 #0.0055   # def: 0.005  
+        KR_y: 0.0095 #0.0055  # def: 0.005
         KR_z: 0.01 #0.008   # def: 0.005
-        Kw_x: 0.003 #0.0013 # def: 0.0009
-        Kw_y: 0.003 #0.0013  # def: 0.0009
-        Kw_z: 0.0028  # def: 0.0012
+        Kw_x: 0.0031 #0.0013 # def: 0.0009
+        Kw_y: 0.0031 #0.0013  # def: 0.0009
+        Kw_z: 0.003  # def: 0.0012
         KI_x: 0.001 #0.012 #0.009 #0.015
         KI_y: 0.001 #0.018 #0.009 #0.015
         KI_z: 0.001 #0.015 #0.009 #0.015
@@ -239,9 +247,9 @@ all:
     #   solidGreen: 0 # if set to solid color
     #   solidRed: 0 # if set to solid color
     #   headlightEnable: 0
-    locSrv:
-      extPosStdDev: 1e-3
-      #extQuatStdDev: 0.5e-1
+    # locSrv:
+      # extPosStdDev: 1e-3
+      # extQuatStdDev: 0.5e-1
     # kalman:
     #   resetEstimation: 1
   broadcasts:
