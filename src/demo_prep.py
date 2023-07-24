@@ -210,8 +210,8 @@ if __name__ == '__main__':
 
     # print(dict)
 
-    with open(Path(args.path) / 'T_patch_victim.yaml', 'w') as file:
+    with open(Path(args.path) / 'results.yaml', 'w') as file:
         yaml.dump(dict, file)
 
-    with open('T_patch_victim.yaml', 'w') as file:
+    with open('results.yaml', 'w') as file:
         yaml.dump(dict, file)

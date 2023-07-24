@@ -14,16 +14,6 @@ from tf2_ros import TransformBroadcaster
 
 import yaml
 
-from rcl_interfaces.srv import SetParameters
-from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
-
-
-
-
-# import sys
-# sys.path.insert(0,'/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/frontnet_ros/')
-# from attacker_policy import gen_transformation_matrix, get_bb_patch, xyz_from_bb
-
 
 # rotation vectors are axis-angle format in "compact form", where
 # theta = norm(rvec) and axis = rvec / theta
@@ -37,74 +27,6 @@ def opencv2quat(rvec):
         axis = rvec.flatten() / angle
         q = rowan.from_axis_angle(axis, angle)
     return q
-
-
-
-def calc_max_possible_victim_change(current_victim_pose, target_position):
-    max_new_pos = current_victim_pose[:2, 3] + target_position[:2]   # v_x + target_x, v_y + target_y
-    max_new_pos[0] -= 1. # substract safety radius
-
-    victim_quat = rowan.from_matrix(current_victim_pose[:3, :3])
-
-    new_pose_world = np.zeros((4, 4))
-    new_pose_world[:3, :3] = rowan.to_matrix(victim_quat)
-    new_pose_world[:2, 3] = max_new_pos
-    new_pose_world[-1, -1] = 1.
-
-    return new_pose_world
-
-def update_attacker_pose(T_victim_world_c, T_victim_world_d):
-
-    target_positions = np.array([[1, 1, 0], [1, -1, 0]])
-    
-    A = np.array([[True, False], [False, True]])
-    # possible_attacker_position = np.array([[0.28316405,  0.20245424, -0.2117372 ],
-    #                                        [0.30532456, -0.20091306, -0.22638479]])
-
-
-
-    T_attacker_in_world_d = {'matrices': [], 'distances': []}
-    for k in range(A.shape[1]):
-
-        m = np.argwhere(A[..., k]==True)[0, 0]
-
-        # transformation_matrix = gen_transformation_matrix(*optimized_patch_positions[m,k])
-
-        # bounding_box_placed_patch = get_bb_patch(transformation_matrix)
-
-        # patch_in_camera = xyz_from_bb(bounding_box_placed_patch, camera_intrinsics)
-        # # print(patch_in_camera)
-        # patch_in_victim = (np.linalg.inv(camera_extrinsics) @ [*patch_in_camera, 1])[:3]
-        # print(patch_in_victim)
-        # print(patch_rel_position)T_victim_world_c
-
-        # T_patch_in_victim = np.zeros((4,4))
-        # T_patch_in_victim[:3, :3] = np.eye(3,3)
-        # T_patch_in_victim[:3, 3] = patch_in_victim
-        # T_patch_in_victim[-1, -1] = 1.
-
-        # print(T_patch_in_victim)
-
-        #T_patch_in_world = T_victim_world @ T_patch_in_victim   <--- seems faulty to me
-        T_patch_in_world = T_victim_world_c.copy()
-        T_patch_in_world[:3, 3] += possible_attacker_position[k]
-        # print(T_patch_in_world)
-
-        T_attacker_in_world = T_patch_in_world.copy()
-        T_attacker_in_world[2, 3] += 0.096  # center of CF is 9.6 cm above center of patch
-
-        T_attacker_in_world_d['matrices'].append(T_attacker_in_world)
-
-        T_possible_new_victim_pose = calc_max_possible_victim_change(T_victim_world_c, target_positions[k])
-
-        # print(T_victim_world_c.shape, T_victim_world_d.shape, T_possible_new_victim_pose.shape)
-
-        # Why base this decision on the victim pose?
-        # "The objective is to minimize the tracking error of the victim
-        # between its current pose pv and desired pose  ̄pv , i.e.∫t ∥ ̄pv (t) − ˆpv (t)∥dt."
-        T_attacker_in_world_d['distances'].append(np.linalg.norm((T_victim_world_d-T_possible_new_victim_pose), ord=2))
-
-    return T_attacker_in_world_d['matrices'][np.argmin(T_attacker_in_world_d['distances'])]
 
 class Attack():
     attacker_id = 4
@@ -136,7 +58,6 @@ class Attack():
 
         
     def pose_callback(self, store_into, msg: PoseStamped):
-        # print(msg)
         # store the latest pose
         if store_into == 'a':
             self.pose_a = msg
@@ -144,6 +65,7 @@ class Attack():
             self.pose_v = msg
 
     def _broadcast(self, name, frame, T):
+        # helper function to broadcast poses to rviz
         t_base = TransformStamped()
         t_base.header.stamp = self.node.get_clock().now().to_msg()
         t_base.header.frame_id = frame
@@ -163,6 +85,7 @@ class Attack():
         self.tfbr.sendTransform(t_base)
 
     def _get_T(self, msg):
+        # calculate full 4x4 transformation matrix from position and quaternions
         pos = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z]
         quat = [msg.pose.orientation.w, msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z]
 
@@ -199,17 +122,8 @@ class Attack():
         return np.array([p_D_prime[0], p_D_prime[1], 1.0]), target_yaw
 
     def compute_attacker_pose(self, pos_v_desired, targets, A, positions):
-        # can use
-        # self.pose_a: current pose of attacker
-        # self.pose_v: current pose of victim
-        # print(self.pose_a)
-        # print(self.pose_v)
 
-        
-        # pos_v = [self.pose_v.position.x, self.pose_v.position.y, self.pose_v.position.z]
-        # quat_v = [self.pose_v.orientation.]
-
-
+        # broadcast poses to rviz
         T_victim_world_c = self._get_T(self.pose_v)
 
         self._broadcast('v', 'world', T_victim_world_c)
@@ -218,62 +132,49 @@ class Attack():
 
         self._broadcast('a', 'world', T_attacker_world)
 
-        # possible_patch_position = np.array([[0.28316405,  0.20245424, -0.2117372 ],
-        #                                     [0.30532456, -0.20091306, -0.22638479]])
-
-
-
-        # print("victim in world: ", T_victim_world_c)
-        # print("pacth in victim: ", T_patch_in_victim)
 
         T_victim_world_d = np.eye(4)
         T_victim_world_d[:3, 3] = pos_v_desired
 
         self._broadcast('vd', 'world', T_victim_world_d)
 
+        # decide which patch + position would move the victim closer to the desired trajectory
         best_attack = None
         best_error = np.inf
         for target, a, pos in zip(targets, A, positions):
-            pos_v_effect, theta_v_effect = self._compute_frontnet_reaction(T_victim_world_c, target)
+            pos_v_effect, theta_v_effect = self._compute_frontnet_reaction(T_victim_world_c, target) # mimic the output of frontnet
             error = np.linalg.norm(pos_v_desired - pos_v_effect)
             if error < best_error:
                 best_error = error
                 best_attack = target, a, pos
 
-        print("Picked attack ", best_attack)
+
         # apply this patch relative to the current position
         T_patch_in_victim = np.eye(4)
-        T_patch_in_victim[:3, 3] = best_attack[2]
-        T_patch_in_victim[2, 3] += 0.093  # debug
+        T_patch_in_victim[:3, 3] = best_attack[2]  # pos in best_attack is position of the patch relative to victim
+        T_patch_in_victim[2, 3] += 0.093   # center of the patch is 9.3 cm underneath the center of Crazyflie, therefore z needs to be shifted
 
-        T_attacker_in_world = T_victim_world_c @ T_patch_in_victim
-        # print("attacker in world: ", T_attacker_in_world)
+        T_attacker_in_world = T_victim_world_c @ T_patch_in_victim # transform attacker pose into world frame
 
         self._broadcast('ad', 'world', T_attacker_in_world)
-        # self._broadcast('ad2', 'v', T_patch_in_victim)
 
 
         # return desired pos and yaw for the attacker
-        roll, pitch, yaw = rowan.to_euler(rowan.from_matrix(T_attacker_in_world[:3, :3]), 'xyz') 
-        return T_attacker_in_world[:3, 3], roll, pitch, yaw + best_attack[1] * np.pi
+        roll, pitch, yaw = rowan.to_euler(rowan.from_matrix(T_attacker_in_world[:3, :3]), 'xyz')
+        yaw += best_attack[1] * np.pi # depending on which patch is to be presented (0 or 1), turn attacker by 180° or not
+        return T_attacker_in_world[:3, 3], roll, pitch, yaw 
 
     def run(self, targets, A, positions):
         offset=np.zeros(3)
         rate=2
-        stretch = 5 # >1 -> slower
+        stretch = 9 # >1 -> slower
 
         all_victim_data = []
         all_attacker_data = []
 
         traj = Trajectory()
-        traj.loadcsv("/home/pia/Documents/Coding/adversarial_frontnet/hardware/frontnet_ros/data/movey_long.csv")#Path(__file__).parent / "data/circle0.csv")
-
-
-
-        # yaws = np.linspace(-2*np.pi, 2*np.pi, num=20)
-
-
-
+        # change path accordingly!
+        traj.loadcsv("/path/to/flying_adversarial_patch/hardware/frontnet_ros/data/movex_gate.csv")
 
         self.node.takeoff(targetHeight=1.0, duration=3.0)
         self.timeHelper.sleep(7.0)
@@ -283,10 +184,9 @@ class Attack():
                 break
             self.timeHelper.sleep(0.1)
 
+        # turn victim by -90° to face the white wall in our lab
         self.cf_v.goTo(np.array([0.0, 0.0, 1.0]), -np.pi/2., 2.)
         self.timeHelper.sleep(3.)
-
-        yaws_idx = 0
 
         start_time = self.timeHelper.time()
         while not self.timeHelper.isShutdown():
@@ -294,11 +194,9 @@ class Attack():
             if t > traj.duration * stretch:
                 break
 
+            # get new desired victim position 
             e = traj.eval(t / stretch)
             pos_v_desired = e.pos + offset
-            print("Desired waypoint", pos_v_desired)
-            # victim_data.append(pos_v_desired)
-            # pos_v_desired = np.array([0., 0., 1.], dtype=np.float32)
 
             # logging position and yaw of victim
             pos_v_current = np.array([self.pose_v.pose.position.x, self.pose_v.pose.position.y, self.pose_v.pose.position.z])
@@ -306,42 +204,30 @@ class Attack():
             roll_v_current, pitch_v_current, yaw_v_current = rowan.to_euler(quats_v_current, 'xyz') 
             all_victim_data.append([t, *pos_v_current, roll_v_current, pitch_v_current, yaw_v_current,*pos_v_desired, 0., 0., 0.])
 
+            # compute desired attacker pose
             pos_a_desired, roll_a_desired, pitch_a_desired, yaw_a_desired = self.compute_attacker_pose(pos_v_desired, targets, A, positions)
 
+
+            # logging position and yaw of attacker
             pos_a_current = np.array([self.pose_a.pose.position.x, self.pose_a.pose.position.y, self.pose_a.pose.position.z])
             quats_a_current = np.array([self.pose_a.pose.orientation.w, self.pose_a.pose.orientation.x, self.pose_a.pose.orientation.y, self.pose_a.pose.orientation.z])
             roll_a_current, pitch_a_current, yaw_a_current = rowan.to_euler(quats_a_current, 'xyz') 
-
-            # logging position and yaw of attacker
             all_attacker_data.append([t, *pos_a_current, roll_a_current, pitch_a_current, yaw_a_current,*pos_a_desired, roll_a_desired, pitch_a_desired, yaw_a_desired])
 
+            # continously save data in case of crashes
             np.save(f'victim_data_{start_time}.npy', np.array(all_victim_data))
             np.save(f'attacker_data_{start_time}.npy', np.array(all_attacker_data))
 
-
+            # calculate move time depending on maximum speed and angular speed
+            # switching the patch takes more time than simply moving to a new setpoint!
             distance= np.linalg.norm(pos_a_current-pos_a_desired)
             angular_distance = np.abs(np.arctan2(np.sin(yaw_a_current- yaw_a_desired), np.cos(yaw_a_current - yaw_a_desired)))
             max_speed = 0.5
             max_angular_speed = 0.8
             move_time = max(distance / max_speed, 1.0, angular_distance/max_angular_speed)
             
-            # if distance > 0.1:
-                # self.cf_a.notifySetpointsStop()
-            self.cf_a.goTo(pos_a_desired, yaw_a_desired, move_time) 
-            # self.cf_a.goTo(pos_v_desired, yaws[yaws_idx], 1.0)
-            # yaws_idx += 1
-            # if yaws_idx >= len(yaws):
-            #     yaws_idx = 0
-            # else:
-            # self.cf_a.cmdFullState(
-            #     pos_a_desired,
-            #     np.zeros(3),
-            #     np.zeros(3),
-            #     yaw_a_desired,
-            #     np.zeros(3))
-
+            self.cf_a.goTo(pos_a_desired, yaw_a_desired, move_time)
             self.timeHelper.sleepForRate(rate)
-            # self.timeHelper.sleep(move_time+0.1)
 
         
         self.timeHelper.sleep(5.0)
@@ -352,25 +238,20 @@ class Attack():
 
 
 def main():
-    a = Attack()
+    a = Attack()    
 
-    # positions_p0 = np.array([[0.5, -0.6, 0.4], [0.3, -0.2, -1.0]])
-    # positions_p1 = np.array([[0.5, -0.8, 0.3], [0.5, 0.6, 0.4]])
-    # patch_positions_image = np.stack([positions_p0, positions_p1])
-    
-
-    with open('/home/pia/Documents/Coding/adversarial_frontnet/T_patch_victim.yaml') as f:
+    # load saved results for optimized patches
+    # change path accordingly!
+    with open('/path/to/flying_adversarial_patch/results.yaml') as f:
         dict = yaml.load(f, Loader=yaml.FullLoader)
 
-    # patch_in_victim = np.array([dict['sf'][0], dict['tx'][0], dict['ty'][0]])
-    # print(patch_in_victim)
-
+    # get the targets the patches where optimized for
     targets = np.array([*dict['targets'].values()]).T
     
-    # patch_pos = np.array([*dict['patch_pos'].values()]).T
+    # get which patch was assigned to which target
     A = np.array([*dict['assignment_patch']])
-    # print(A)
 
+    # get the positions of the optimal patch for each target
     patch_in_victim = np.array([*dict['patch_in_victim'].values()]).T
 
     a.run(targets, A, patch_in_victim)
