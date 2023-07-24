@@ -12,6 +12,8 @@ from pathlib import Path
 import torch
 import cv2
 
+from util import opencv2quat
+
 def gen_transformation_matrix(sf, tx, ty):
     matrix = np.zeros((3,3))
     matrix[0,0] = sf
@@ -25,14 +27,14 @@ def gen_transformation_matrix(sf, tx, ty):
 # theta = norm(rvec) and axis = rvec / theta
 # they can be converted to a matrix using cv2. Rodrigues, see
 # https://docs.opencv.org/4.7.0/d9/d0c/group__calib3d.html#ga61585db663d9da06b68e70cfbf6a1eac
-def opencv2quat(rvec):
-    angle = np.linalg.norm(rvec)
-    if angle == 0:
-        q = np.array([1,0,0,0])
-    else:
-        axis = rvec.flatten() / angle
-        q = rowan.from_axis_angle(axis, angle)
-    return q
+# def opencv2quat(rvec):
+#     angle = np.linalg.norm(rvec)
+#     if angle == 0:
+#         q = np.array([1,0,0,0])
+#     else:
+#         axis = rvec.flatten() / angle
+#         q = rowan.from_axis_angle(axis, angle)
+#     return q
 
 def get_bb_patch(transformation):
     transformation_t = torch.tensor(transformation).unsqueeze(0)
