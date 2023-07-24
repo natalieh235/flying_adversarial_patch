@@ -5,7 +5,7 @@ robots:
 
     uri: radio://0/80/2M/E7E7E7E712    ## CHANGED!
     initial_position: [0.0, 0.0, 0.0] #z=0.15
-    type: cf21_mocap_deck  # see robot_types
+    type: cf21  # see robot_types
     firmware_params:
       pid_attitude:
         yaw_kp: 3.0 # 6.0
@@ -83,7 +83,7 @@ robot_types:
     motion_capture:
       enabled: true
       # only if enabled; see motion_capture.yaml
-      marker: mocap_deck  # default_single_marker
+      marker: default_single_marker  # mocap_deck  # 
       dynamics: default
     big_quad: false
     battery:
