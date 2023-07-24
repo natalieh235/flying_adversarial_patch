@@ -174,7 +174,7 @@ class Attack():
 
         traj = Trajectory()
         # change path accordingly!
-        traj.loadcsv("/path/to/flying_adversarial_patch/hardware/frontnet_ros/data/movex_gate.csv")
+        traj.loadcsv("/path/to/flying_adversarial_patch/hardware/frontnet_ros/data/capture.csv")
 
         self.node.takeoff(targetHeight=1.0, duration=3.0)
         self.timeHelper.sleep(7.0)
