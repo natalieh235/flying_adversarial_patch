@@ -117,15 +117,16 @@ if __name__ == '__main__':
 
     # # print(patches.shape)
 
-    # with PdfPages(Path(args.path) / 'print.pdf') as pdf:
-    #     for patch_idx, patch in enumerate(patches):
-    #         fig, ax = plt.subplots(figsize=(11.69,8.27))
-    #         ax.imshow(patch[0], cmap='gray')
-    #         plt.axis('off')
-    #         plt.tight_layout()
-    #         pdf.savefig(fig)
-    #         plt.close(fig)
+    with PdfPages(Path(args.path) / 'print.pdf') as pdf:
+        for patch_idx, patch in enumerate(patches):
+            fig, ax = plt.subplots(figsize=(11.69,8.27))
+            ax.imshow(patch[0], cmap='gray')
+            plt.axis('off')
+            plt.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
 
+    # If your printer also only handles jpgs, use this code instead.
     # fig, ax = plt.subplots(figsize=(11.69,8.27))
     # ax.imshow(patch, cmap='gray')
     # plt.axis('off')
