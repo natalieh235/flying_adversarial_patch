@@ -173,8 +173,8 @@ class Attack():
         all_attacker_data = []
 
         traj = Trajectory()
-        # change path accordingly!
-        traj.loadcsv("/path/to/flying_adversarial_patch/hardware/frontnet_ros/data/capture.csv")
+        # change path if needed!
+        traj.loadcsv("data/capture.csv")
 
         self.node.takeoff(targetHeight=1.0, duration=3.0)
         self.timeHelper.sleep(7.0)
@@ -241,8 +241,8 @@ def main():
     a = Attack()    
 
     # load saved results for optimized patches
-    # change path accordingly!
-    with open('/path/to/flying_adversarial_patch/results.yaml') as f:
+    # change path if needed!
+    with open('../../results.yaml') as f:
         dict = yaml.load(f, Loader=yaml.FullLoader)
 
     # get the targets the patches where optimized for
