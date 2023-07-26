@@ -249,10 +249,16 @@ If you used our `settings.yaml` to optimize the adversarial patches, the results
 
 This script will create a PDF file of all patches and save the assignment and the optimized positions in `results.yaml` inside the `eval/demo/multi/` folder. The `results.yaml`is also saved in the main folder of this repository for convienient use by our attack policy script.
 
-You can print the patches as a black-and-white print onto a regular A4 paper. Please cut off the white borders to the left, right and bottom. Keep at least 0.5 cm of the top border since the paper needs to be attached to the Crazyflie.
+You can print the patches onto a regular A4 paper. Please cut off the white borders to the left, right and bottom. Keep at least 0.5 cm of the top border, since the paper needs to be attached to the Crazyflie.
 
 ### Attaching the patches to the victim
-TODO: Placeholder for image of attachment and further details. 
+![patch attachment](doc/patch_attachment.png)
+
+For attaching the printed patches, we cut out a 12.5 cm long, thin piece of cardboard, as displayed in the image above. To secure the cardboard to the Crazyflie, we cut two 2.5 mm diameter holes 3 cm apart from each other into it.
+
+To secure the paper to the cardboard, we cut 3 holes into the top part, one in the middle and two to the sides. The hole in the middle should go directly underneath the center of the Crazyflies. We use lightweight 2.5 mm diameter screws to attach paper and cardboard onto each other and the Crazyflie.
+
+Our attack policy assumes that patch 0 is facing in the direction of the USB connector and patch 1 is facing in the direction of the small tip next to the power button.
 
 ### Running the attack policy script
 After opening a terminal and launching the Crazyswarm server as described [previously](README.md#fly-with-crazyswarm-2-and-frontnet), open a second terminal window and launch our attack script with
@@ -276,4 +282,4 @@ The take off and initial positioning for both Crazyflies will be done by the att
 
 You are only required to enable the Frontnet network output to be used to generate new setpoints as soon as both drones are at their initial positions. 
 
-For the victim that means that it is turned by -90° and hovering, for the attacker that means that it is positioned in proximity to the victim and in the field of view of the AI deck camera. You can then press the X button on the Xbox controller to enable Frontnet on the victim drone.
+For the victim that means that it is turned by yaw = -90° and hovering, for the attacker that means that it is positioned in proximity to the victim and in the field of view of the AI deck camera. You can then press the X button on the Xbox controller to enable Frontnet on the victim drone.
