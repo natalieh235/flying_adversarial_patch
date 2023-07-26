@@ -1,7 +1,5 @@
 # Kidnapping Deep Learning-based Multirotors using Optimized Flying Adversarial Patches
 
-Placeholder Video
-
 ## Installation
 ### Clone the repository
 To clone the repository including the code from the pulp-frontnet module, use this command:
@@ -33,7 +31,6 @@ $ python3 -m venv /path/to/env
 $ source path/to/env/bin/activate
 $ python -m pip install -r path/to/flying_adversarial_patch/requirements.txt
 ```
-
 
 ## Compute adversarial patches and their positions
 To generate the adversarial patch with optimal transformation matrices, you can call
@@ -148,14 +145,12 @@ $ python misc/opencv_calibration_intrinsic.py /path/to/checkerboard_images/
 
 $ python misc/opencv_manual_extrinsic.py misc/calibration.yaml
 ```
-
-
-
 ## Hardware
 ### Prerequisites:
 * [Crazyflie 2.1](https://store.bitcraze.io/products/crazyflie-2-1)
 * [Crazyradio PA 2.4 GHz](https://store.bitcraze.io/products/crazyradio-pa)
 * [AI Deck 1.1](https://store.bitcraze.io/products/ai-deck-1-1?variant=32485907890263)
+* [Upgraded motors and propellers](https://store.bitcraze.io/collections/accessories/products/thrust-upgrade-bundle-for-crazyflie-2-x?variant=40029196419159)
 * JTAG Debugger with 10-pin-connector
 * Gamepad/Controller (e.g. XBox 360 USB Controller)
 * [Install Crazyflie Client](https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/installation/install/)
