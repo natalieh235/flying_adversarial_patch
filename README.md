@@ -2,7 +2,7 @@
 
 ## Installation
 ### Clone the repository
-To clone the repository including the code from the pulp-frontnet module, use this command:
+To clone the repository including the code from the PULP-Frontnet module, use this command:
 ```bash
 # via ssh
 $ git clone --recurse-submodules git@github.com:phanfeld/flying_adversarial_patch.git
@@ -10,7 +10,7 @@ $ git clone --recurse-submodules git@github.com:phanfeld/flying_adversarial_patc
 $ git clone --recurse-submodules https://github.com/phanfeld/flying_adversarial_patch.git
 ```
 
-If you have cloned the repository without the `--recurse-submodules` argument and want to pull the pulp-frontnet code, please use the following command inside the repository:
+If you have cloned the repository without the `--recurse-submodules` argument and want to pull the PULP-Frontnet code, please use the following command inside the repository:
 ```bash
 $ git submodule update --init --recursive
 ```
@@ -97,7 +97,7 @@ Please adapt the hyperparameters in the `exp1.yaml` file according to your needs
 
 With `-j 4`, 4 worker processes are spawned and all approaches are computed in parallel. Depending on your hardware, you can set `-j` to a different value. If `-j` is set to 1, the different approaches will be computed consecutively.
 
-With `--trials 10` you can set the number of paraellel training runs for the same mode to 10 like we did in the paper.
+With `--trials 10` you can set the number of parallel training runs for the same mode to 10 like we did in the paper.
 
 With `--mode all` you can choose all modes ('fixed', 'joint', 'split', 'hybrid'). You can additionally set the mode to one or a combination of all modes with, e.g., `--mode fixed hybrid` to only run the experiment for the 'fixed' and 'hybrid' approach.
 
@@ -116,7 +116,7 @@ The resulting mean test loss for all $K$ will be printed in the terminal.\
 The results folder will contain a PDF file including a plot similar to Fig. 5 from the paper.
 
 ### Comparison of different starting patches
-You can reproduce the experiment analyzing different starting patches with executing:
+You can reproduce the experiment by analyzing different starting patches with executing:
 ```bash
 $ python src/exp3.py --file exp3.yaml -j 4 --trials 10 --mode all
 ```
@@ -139,7 +139,7 @@ This script will also load previously calculated patches from a specified evalua
 ## Reproduce camera calibration
 To reproduce the camera calibration, we gathered images of a checkerboard pattern with our adapted code of the [wifi-img-streamer example](https://github.com/phanfeld/aideck-gap8-examples) originally provided by Bitcraze [here](https://github.com/bitcraze/aideck-gap8-examples).
 
-We adapted the code provided in [this repository](https://github.com/IMRCLab/cv-mrs/) to calculate the camera intrinic and extrinsic parameters and the distortion coefficients by calling:
+We adapted the code provided in [this repository](https://github.com/IMRCLab/cv-mrs/) to calculate the camera intrinsic and extrinsic parameters and the distortion coefficients by calling:
 ```bash
 $ python misc/opencv_calibration_intrinsic.py /path/to/checkerboard_images/
 
@@ -191,7 +191,7 @@ The firmware for the victim will be flashed wirelessly via the Crazyradio. Pleas
 As a prerequisite, we need the address of the Crazyflie. If not set manually, the standard address is `radio://0/80/2M/E7E7E7E7E7`. The address can be set easily with the [Crazyflie Client](https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/userguides/userguide_client/#firmware-configuration).
 For example, our attacker Crazyflie's address is `E7E7E7E712`.
 
-Now move to the correct folder, build and lastly flash the firmware with the following commands:
+Now move to the correct folder, build, and lastly flash the firmware with the following commands:
 ```bash
 $ cd path/to/flying_adversarial_patch/hardware/attacker_firmware/
 $ make cf2_defconfig
@@ -220,8 +220,8 @@ $ docker run --rm -v ${PWD}:/module --device /dev/ttyUSB0 --privileged -P bitcra
 Please make sure that your JTAG device is `/dev/ttyUSB0`, otherwise please change the command accordingly with the correct number.
 
 ### Fly with Crazyswarm 2 and Frontnet
-After successfull flashing of both attacker and victim, you can start your flight tests.\
-If you are utilizing the FlowDeck for state estimates, make sure it is connected to the bottom of your Crazyflies. Otherwise make sure that your motion capture system is running and you have configured Crazyswarm 2 correctly to receive pose information (e.g. adapt `motion_capture.yaml` in the `hardware/frontnet_ros/config` folder to match your setup).
+After successfully flashing of both attacker and victim, you can start your flight tests.\
+If you are utilizing the FlowDeck for state estimates, make sure it is connected to the bottom of your Crazyflies. Otherwise, make sure that your motion capture system is running and that you have configured Crazyswarm 2 correctly to receive pose information (e.g. adapt `motion_capture.yaml` in the `hardware/frontnet_ros/config` folder to match your setup).
 
 You'll need at least one terminal window opened in your ros2 workspace.
 ```bash
@@ -231,7 +231,7 @@ $ source /opt/ros/galactic/setup.bash
 $ . install/local_setup.bash
 $ ros2 launch frontnet_ros launch.py
 ```
-After a few seconds, you'll be able to take off pressing the Start button on the Xbox controller. To enable the Frontnet network output to be used to generate new setpoints, press the X button and move in front of the camera.
+After a few seconds, you'll be able to take off by pressing the Start button on the Xbox controller. To enable the Frontnet network output to be used to generate new setpoints, press the X button and move in front of the camera.
 
 ## Kidnapping the victim Crazyflie
 ### Preparing the flying patches
@@ -240,11 +240,11 @@ We provided a script that can be called with:
 ```bash
 $ python src/demo_prep.py eval/demo/multi/
 ```
-If you used our `settings.yaml` to optimize the adversarial patches, the results will be saved at `eval/demo/multi/`. Otherwise just adapt the path to your result folder accordingly.
+If you used our `settings.yaml` to optimize the adversarial patches, the results will be saved at `eval/demo/multi/`. Otherwise, just adapt the path to your result folder accordingly.
 
-This script will create a PDF file of all patches and save the assignment and the optimized positions in `results.yaml` inside the `eval/demo/multi/` folder. The `results.yaml`is also saved in the main folder of this repository for convienient use by our attack policy script.
+This script will create a PDF file of all patches and save the assignment and the optimized positions in `results.yaml` inside the `eval/demo/multi/` folder. The `results.yaml`is also saved in the main folder of this repository for convenient use by our attack policy script.
 
-You can print the patches onto a regular A4 paper. Please cut off the white borders to the left, right and bottom. Keep at least 0.5 cm of the top border, since the paper needs to be attached to the Crazyflie.
+You can print the patches onto a regular A4 paper. Please cut off the white borders to the left, right, and bottom. Keep at least 0.5 cm of the top border, since the paper needs to be attached to the Crazyflie.
 
 ### Attaching the patches to the victim
 ![patch attachment](doc/patch_attachment.png)
@@ -269,11 +269,11 @@ We provide two desired trajectories with this repository:\
 1) Moving along a straight line in y direction (as seen in the second and third clip in the video).
 2) Capturing the victim inside the net (as seen in the last clip in the video).
 
-Both trajectories are stored in `hardware/frontnet_ros/data/movey.csv` and `hardware/frontnet_ros/data/capture.csv` respecivetly. They were generated using the [UAV Trajectories](https://github.com/whoenig/uav_trajectories.git) repository.
+Both trajectories are stored in `hardware/frontnet_ros/data/movey.csv` and `hardware/frontnet_ros/data/capture.csv` respectively. They were generated using the [UAV Trajectories](https://github.com/whoenig/uav_trajectories.git) repository.
 
 To change which experiment you currently want to run, please adapt the path to the trajectory csv file [here](hardware/frontnet_ros/frontnet_ros/attack.py#177) in the attack script.
 
-The take off and initial positioning for both Crazyflies will be done by the attacker script.
+The take-off and initial positioning for both Crazyflies will be done by the attacker script.
 
 You are only required to enable the Frontnet network output to be used to generate new setpoints as soon as both drones are at their initial positions. 
 
