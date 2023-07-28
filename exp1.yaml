@@ -19,5 +19,5 @@ scale_min: 0.3
 scale_max: 0.5
 patch: 
   mode: 'random'  # face, white, random
-  path: 'src/custom_patches/custom_patch_resized.npy' # if mode == 'face' set a path, otherwise path is ignored
+  path: 'src/custom_patches/custom_patch_96x160.npy' # if mode == 'face' set a path, otherwise path is ignored
 quantized: false

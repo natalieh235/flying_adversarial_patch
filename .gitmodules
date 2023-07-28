@@ -7,3 +7,6 @@
 [submodule "nemo"]
 	path = nemo
 	url = git@github.com:phanfeld/nemo.git
+[submodule "hardware/attacker_firmware"]
+	path = hardware/attacker_firmware
+	url = git@github.com:IMRCLab/crazyflie-firmware.git

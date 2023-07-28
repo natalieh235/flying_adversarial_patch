@@ -12,14 +12,14 @@ class VisualizationNode(Node):
     def __init__(self):
         super().__init__('vis')
 
-        self.cf = "cf231"
+        self.cf = "cf18"
 
         self.publisher = self.create_publisher(
                 PoseStamped, "{}/frontnet_targetpos_typed".format(self.cf), 10)
 
         self.subscription1 = self.create_subscription(
             LogDataGeneric,
-            '{}/frontnet_targetpos'.format(self.cf),
+            '{}/frontnet'.format(self.cf),
             self.frontnet_targetpos_callback,
             10)
 
@@ -39,7 +39,7 @@ class VisualizationNode(Node):
         msg2.pose.orientation.x = 0.0
         msg2.pose.orientation.y = 0.0
         msg2.pose.orientation.z = 0.0
-        msg2.pose.orientation.w = 1.1
+        msg2.pose.orientation.w = 1.0
         self.publisher.publish(msg2)
 
 

@@ -57,7 +57,7 @@ class Experiment4:
         test_set = load_dataset(path=dataset_path, batch_size=settings['batch_size'], shuffle=True, drop_last=False, train=False, num_workers=0)
 
 
-        p = Path('eval/exp1/')
+        p = Path('eval/exp1/') # change path to experiment calculated on full-precision network!
         # calc loss for each mode
         for mode in ['fixed', 'joint', 'split', 'hybrid']:
             # load all best patches for current mode

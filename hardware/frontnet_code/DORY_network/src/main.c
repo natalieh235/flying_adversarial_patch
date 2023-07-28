@@ -137,10 +137,11 @@ static int open_camera(struct pi_device *device)
 
     pi_camera_control(device, PI_CAMERA_CMD_AEG_INIT, 0);
 
-  uint8_t aeg = 0x01;
+  uint8_t aeg = 0x00;
   uint8_t aGain = 4;
   uint8_t dGain = 1;
-  uint16_t exposure = 400;
+  uint16_t exposure = 100;
+
 
    set_register(0x2100, aeg);  // AE_CTRL
 

@@ -68,9 +68,9 @@ def generate_launch_description():
                 ('emergency', 'all/emergency'),
                 ('takeoff', 'all/takeoff'),
                 ('land', 'all/land'),
-                ('notify_setpoints_stop', 'cf4/notify_setpoints_stop'),
-                ('cmd_vel', 'cf2/cmd_vel'),
-                ('cmd_full_state', 'cf4/cmd_full_state'),
+                ('notify_setpoints_stop', 'cf18/notify_setpoints_stop'),
+                ('cmd_vel', 'cf18/cmd_vel'),
+                ('cmd_full_state', 'cf18/cmd_full_state'),
             ],
             parameters=[teleop_params]
         ),
@@ -106,13 +106,13 @@ def generate_launch_description():
                 "max_dt": 0.1,              # artificially limit the step() function (set to 0 to disable)
             }]
         ),
-        # Node(
-        #     package='rviz2',
-        #     namespace='',
-        #     executable='rviz2',
-        #     name='rviz2',
-        #     arguments=['-d' + rviz_config]
-        # ),
+        Node(
+            package='rviz2',
+            namespace='',
+            executable='rviz2',
+            name='rviz2',
+            arguments=['-d' + rviz_config]
+        ),
         Node(
             package='frontnet_ros',
             namespace='',

@@ -1,8 +1,8 @@
-# Flying Adversarial Patches for DL-based multirotors
+# Kidnapping Deep Learning-based Multirotors using Optimized Flying Adversarial Patches
 
 ## Installation
 ### Clone the repository
-To clone the repository including the code from the pulp-frontnet module, use this command:
+To clone the repository including the code from the PULP-Frontnet module, use this command:
 ```bash
 # via ssh
 $ git clone --recurse-submodules git@github.com:phanfeld/flying_adversarial_patch.git
@@ -10,7 +10,7 @@ $ git clone --recurse-submodules git@github.com:phanfeld/flying_adversarial_patc
 $ git clone --recurse-submodules https://github.com/phanfeld/flying_adversarial_patch.git
 ```
 
-If you have cloned the repository without the `--recurse-submodules` argument and want to pull the pulp-frontnet code, please use the following command inside the repository:
+If you have cloned the repository without the `--recurse-submodules` argument and want to pull the PULP-Frontnet code, please use the following command inside the repository:
 ```bash
 $ git submodule update --init --recursive
 ```
@@ -32,8 +32,7 @@ $ source path/to/env/bin/activate
 $ python -m pip install -r path/to/flying_adversarial_patch/requirements.txt
 ```
 
-
-## Compute adversarial patch and position
+## Compute adversarial patches and their positions
 To generate the adversarial patch with optimal transformation matrices, you can call
 ```bash
 $ python src/attacks.py --file settings.yaml
@@ -57,9 +56,9 @@ You can change the initial patch for a training run in the settings file. Either
 ```yaml
 patch: 
   mode: 'face'
-  path: 'src/custom_patches/custom_patch_resized.npy'
+  path: 'src/custom_patches/custom_patch_96x160.npy'
 ```
-to, e.g., start from a patch showing a face. Please specify the path to point to a valid numpy array file. The patch should be grayscale and can have any width and height. We prepared multiple patches in the `src/custom_patches` folder.
+to, e.g., start from a patch showing a face. Please specify the path to point to a valid numpy array file. The patch should be grayscale and have the same resolution as the base images.
 
 If the initial patch should be white or starting from random pixel values, adapt the patch mode in the `settings.yaml` like:
 ```yaml
@@ -86,18 +85,19 @@ path
 |_boxplot_data.npy # an array containing all of the data needed to create the boxplots from the paper
 ```
 ## Reproduce the experiments of the paper
-To reproduce all of the results from the paper "Flying Adversarial Patches: Manipulating the Behavior of Deep Learning-based Autonomous Multirotors", we prepared several scripts:
+To reproduce all of the results from the paper "Flying Adversarial Patches: Manipulating the Behavior of Deep Learning-based Autonomous Multirotors" and "Kidnapping Deep Learning-based Multirotors using Optimized Flying
+Adversarial Patches" we prepared several scripts:
 ### Comparison between the different approaches
 To run the full experiment on the different approaches, run:
 ```bash
-python src/exp1.py --file exp1.yaml -j 4 --trials 10 --mode all
+$ python src/exp1.py --file exp1.yaml -j 4 --trials 10 --mode all
 ```
 
 Please adapt the hyperparameters in the `exp1.yaml` file according to your needs. 
 
 With `-j 4`, 4 worker processes are spawned and all approaches are computed in parallel. Depending on your hardware, you can set `-j` to a different value. If `-j` is set to 1, the different approaches will be computed consecutively.
 
-With `--trials 10` you can set the number of paraellel training runs for the same mode to 10 like we did in the paper.
+With `--trials 10` you can set the number of parallel training runs for the same mode to 10 like we did in the paper.
 
 With `--mode all` you can choose all modes ('fixed', 'joint', 'split', 'hybrid'). You can additionally set the mode to one or a combination of all modes with, e.g., `--mode fixed hybrid` to only run the experiment for the 'fixed' and 'hybrid' approach.
 
@@ -107,7 +107,7 @@ The results folder will contain a PDF file including the boxplots (among others)
 ### Scalability for multiple target positions
 To run the experiment on $1\leq K \leq 10$ desired target positions $\bar{\mathbf{p}}^h_K$, run:
 ```bash
-python src/exp2.py --file exp2.yaml -j 4 --trials 10
+$ python src/exp2.py --file exp2.yaml -j 4 --trials 10
 ```
 
 Please adapt `exp2.yaml` according to your needs. Note that the mode needs to be changed in the yaml file! Setting the mode with the `--mode` argument is not possible (currently).
@@ -115,39 +115,42 @@ Please adapt `exp2.yaml` according to your needs. Note that the mode needs to be
 The resulting mean test loss for all $K$ will be printed in the terminal.\
 The results folder will contain a PDF file including a plot similar to Fig. 5 from the paper.
 
-### Comparison different starting patches
-You can reproduce the experiment analyzing different starting patches with executing:
+### Comparison of different starting patches
+You can reproduce the experiment by analyzing different starting patches with executing:
 ```bash
-python src/exp3.py --file exp3.yaml -j 4 --trials 10 --mode all
+$ python src/exp3.py --file exp3.yaml -j 4 --trials 10 --mode all
 ```
 
 Please adapt `exp3.yaml` according to your needs.
 
 The resulting mean test loss for all patch modes and optimization approaches will be printed in the terminal.
 
+### Analysing the impact on the quantized NN
+We analyzed the impact of the adversarial patches calculated for the full-precision version of PULP-Frontnet to the ones calculated for the quantized version of Frontnet.
+
+You can start the optimization of the patches for the quantized NN with:
+```bash
+$ python src/exp4.py --file exp4.yaml -j 4 --trials 10 --mode all
+```
+
+This script will also load previously calculated patches from a specified evaluation folder and calculate the test loss on the quantized NN. Before running the script, you therefore need to adapt the path of the folder in which those patches are saved in [here](src/exp4.py#L60).
+
 
 ## Reproduce camera calibration
-The camera calibration was performed on the `160x96StrangersTestset` dataset provided by the pulp-frontnet authors. If you followed the steps in [Download the datasets](#download-the-datasets), you can find the dataset here: `pulp-frontnet/PyTorch/Data/160x96StrangersTestset.pickle`.
+To reproduce the camera calibration, we gathered images of a checkerboard pattern with our adapted code of the [wifi-img-streamer example](https://github.com/phanfeld/aideck-gap8-examples) originally provided by Bitcraze [here](https://github.com/bitcraze/aideck-gap8-examples).
 
-We saved all the 3D coordinates and the corresponding 2D coordinates of the humans in the images in a csv file. You can find it here: `adversarial_frontnet/camera_calibration/ground_truth_pose.cs`
+We adapted the code provided in [this repository](https://github.com/IMRCLab/cv-mrs/) to calculate the camera intrinsic and extrinsic parameters and the distortion coefficients by calling:
+```bash
+$ python misc/opencv_calibration_intrinsic.py /path/to/checkerboard_images/
 
-The 3D coordinates are relative to the camera - the UAV with an attached [AI deck](https://www.bitcraze.io/documentation/tutorials/getting-started-with-aideck/). These values are stored as ground-truth data in the dataset.
-
-The 2D coordinates of the human in the image are manually annotated and therefore prone to errors.
-
-We investigated two ways to ways to calibrate the camera: 
-1) calculating a projection matrix with *Direct Linear Transformation* 
-2) utilizing OpenCV's `calibrateCamera()` and `projectPoints()` functions
-
-We have calculated the l2 distance between the manually set points stored in the csv file and the calculated pixel coordinates utilizing both methods. The mean l2 distance of the calculated pixel coordinates utilizing OpenCV was smaller. We therefore adapted the OpenCV functions for our code.
-
-You can follow the main method in `adversarial_frontnet/camera_calibration/camera_calibration.py` to calculate the camera intrinsics, rotation and translation matrix and the distortion coefficients needed for projecting pixels. Additionally, you can load these values from the yaml file, provided in the same folder.
-
+$ python misc/opencv_manual_extrinsic.py misc/calibration.yaml
+```
 ## Hardware
 ### Prerequisites:
 * [Crazyflie 2.1](https://store.bitcraze.io/products/crazyflie-2-1)
 * [Crazyradio PA 2.4 GHz](https://store.bitcraze.io/products/crazyradio-pa)
 * [AI Deck 1.1](https://store.bitcraze.io/products/ai-deck-1-1?variant=32485907890263)
+* [Upgraded motors and propellers](https://store.bitcraze.io/collections/accessories/products/thrust-upgrade-bundle-for-crazyflie-2-x?variant=40029196419159)
 * JTAG Debugger with 10-pin-connector
 * Gamepad/Controller (e.g. XBox 360 USB Controller)
 * [Install Crazyflie Client](https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/installation/install/)
@@ -174,7 +177,7 @@ $ git clone --branch ros2 --recursive https://github.com/IMRCLab/motion_capture_
 ```
 Additionally, the ros2 package provided with this repository needs to be accessible in the `ros2_ws/src` folder. Therefore, create a symbolic link:
 ```bash
-$ ln -s path/to/adverserial_frontnet/hardware/frontnet_ros path/to/ros2_workspace/src
+$ ln -s path/to/flying_adversarial_patch/hardware/frontnet_ros path/to/ros2_workspace/src
 ```
 Please make sure to use the full path instead of relative paths to avoid issues with linking.\
 Now build all of the packages:
@@ -183,30 +186,42 @@ $ cd ../ # go back to path/to/ros2_ws/
 $ colcon build --symlink-install
 ```
 
-### Crazyflie STM32 firmware
-The Crazyflie firmware will be flashed wirelessly via the Crazyradio. Please power the Crazyflie via a battery or use the USB connector.\
+### Attacker firmware
+The firmware for the victim will be flashed wirelessly via the Crazyradio. Please power the Crazyflie via a battery or use the USB connector.\
 As a prerequisite, we need the address of the Crazyflie. If not set manually, the standard address is `radio://0/80/2M/E7E7E7E7E7`. The address can be set easily with the [Crazyflie Client](https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/userguides/userguide_client/#firmware-configuration).
+For example, our attacker Crazyflie's address is `E7E7E7E712`.
 
-Now move to the correct folder, build and lastly flash the firmware with the following commands:
+Now move to the correct folder, build, and lastly flash the firmware with the following commands:
 ```bash
-$ cd path/to/adversarial_frontnet/hardware/frontnet_controller/
+$ cd path/to/flying_adversarial_patch/hardware/attacker_firmware/
+$ make cf2_defconfig
+$ make -j
+$ cfloader flash cf2.bin stm32-fw -w radio://0/80/2M/E7E7E7E7E7
+```
+
+### Victim firmware
+Similarly to the attacker, the victim Crazyflie's address can be set manually. We set the address of our victim Crazyflie to `E7E7E7E707`. 
+
+The victim's firmware can be flashed as follows:
+```bash
+$ cd path/to/flying_adversarial_patch/hardware/frontnet_controller/
 $ make -j
 $ cfloader flash ../crazyflie-firmware/cf2.bin stm32-fw -w radio://0/80/2M/E7E7E7E7E7
 ```
 
-### AI deck GAP8 Firmware (only needed for *victim* UAV)
+### AI deck GAP8 Firmware (only needed for victim UAV)
 To flash the quantized Frontnet network and adapted GAP8 firmware to the GAP8 of the AI deck, connect the JTAG Debugger to the corresponding pins of the GAP8 and via USB to your PC. Please attach the AI deck to the Crazyflie, such that it is powered either through the attached battery or the USB connector.
 
 Then flash the code as follows:
 ```bash
-$ cd path/to/adversarial_frontnet/hardware/frontnet_code/
+$ cd path/to/flying_adversarial_patch/hardware/frontnet_code/
 $ docker run --rm -v ${PWD}:/module --device /dev/ttyUSB0 --privileged -P bitcraze/aideck /bin/bash -c 'export GAPY_OPENOCD_CABLE=interface/ftdi/olimex-arm-usb-tiny-h.cfg; source /gap_sdk/configs/ai_deck.sh; cd /module;  make clean all'
 ```
 Please make sure that your JTAG device is `/dev/ttyUSB0`, otherwise please change the command accordingly with the correct number.
 
 ### Fly with Crazyswarm 2 and Frontnet
-After successfull flashing of both firmwares to the STM32 and the GAP8, you can start your flight tests.\
-If you are utilizing the FlowDeck for state estimates, make sure it is connected to the bottom of your Crazyflie. Otherwise make sure that your motion capture system is running and you have configured Crazyswarm 2 correctly to receive pose information (e.g. adapt `motion_capture.yaml` in the `hardware/frontnet_ros_config` folder to match your setup).
+After successfully flashing of both attacker and victim, you can start your flight tests.\
+If you are utilizing the FlowDeck for state estimates, make sure it is connected to the bottom of your Crazyflies. Otherwise, make sure that your motion capture system is running and that you have configured Crazyswarm 2 correctly to receive pose information (e.g. adapt `motion_capture.yaml` in the `hardware/frontnet_ros/config` folder to match your setup).
 
 You'll need at least one terminal window opened in your ros2 workspace.
 ```bash
@@ -216,60 +231,50 @@ $ source /opt/ros/galactic/setup.bash
 $ . install/local_setup.bash
 $ ros2 launch frontnet_ros launch.py
 ```
-After a few seconds, you'll be able to take off pressing the Start button on the Xbox controller. To enable the Frontnet network output to be used to generate new setpoints, press the X button and move in front of the camera.
+After a few seconds, you'll be able to take off by pressing the Start button on the Xbox controller. To enable the Frontnet network output to be used to generate new setpoints, press the X button and move in front of the camera.
 
-<!-- ### Generate C code and flashable image of quantized Frontnet
-For creating a flashable image, we first need a `.onnx` file of the quantized networks. We use [nemo](https://github.com/pulp-platform/nemo) to receive the `.onnx` file.\
-Nemo only works on older versions of PyTorch. We therefore create a new Python Virtual Environment for this process.
+## Kidnapping the victim Crazyflie
+### Preparing the flying patches
+To reproduce the experiments of our supplemental video, you first need to prepare the adversarial patches for printing and save the assignment and optimized positions.
+We provided a script that can be called with:
 ```bash
-deactivate  # deactive your current virtual environment
-python3 -m venv /path/to/nemo-env
-source /path/to/nemo-env/bin/activate
-python -m pip install torch==1.4.0 torchvision==0.5.0 pytorch-nemo==0.0.7 pandas==1.2.4 torchsummary==1.5.1 matplotlib==3.4.1
+$ python src/demo_prep.py eval/demo/multi/
+```
+If you used our `settings.yaml` to optimize the adversarial patches, the results will be saved at `eval/demo/multi/`. Otherwise, just adapt the path to your result folder accordingly.
+
+This script will create a PDF file of all patches and save the assignment and the optimized positions in `results.yaml` inside the `eval/demo/multi/` folder. The `results.yaml`is also saved in the main folder of this repository for convenient use by our attack policy script.
+
+You can print the patches onto a regular A4 paper. Please cut off the white borders to the left, right, and bottom. Keep at least 0.5 cm of the top border, since the paper needs to be attached to the Crazyflie.
+
+### Attaching the patches to the victim
+![patch attachment](doc/patch_attachment.png)
+
+For attaching the printed patches, we cut out a 12.5 cm long, thin piece of cardboard, as displayed in the image above. To secure the cardboard to the Crazyflie, we cut two 2.5 mm diameter holes 3 cm apart from each other into it.
+
+To secure the paper to the cardboard, we cut 3 holes into the top part, one in the middle and two to the sides. The hole in the middle should go directly underneath the center of the Crazyflies. We use lightweight 2.5 mm diameter screws to attach paper and cardboard onto each other and the Crazyflie.
+
+Our attack policy assumes that patch 0 is facing in the direction of the USB connector and patch 1 is facing in the direction of the small tip next to the power button.
+
+### Running the attack policy script
+After opening a terminal and launching the Crazyswarm server as described [previously](README.md#fly-with-crazyswarm-2-and-frontnet), open a second terminal window and launch our attack script with
+```bash
+$ cd path/to/flying_adversarial_patch/hardware/frontnet_ros/
+$ source path/to/env/bin/activate
+$ source /opt/ros/galactic/setup.bash
+$ . install/local_setup.bash
+$ python frontnet_ros/attack.py
 ```
 
-After installing nemo, please change directories back to the root directory of this repository.
+We provide two desired trajectories with this repository:\
+1) Moving along a straight line in y direction (as seen in the second and third clip in the video).
+2) Capturing the victim inside the net (as seen in the last clip in the video).
 
-You can now call the script, that the Frontnet authors provided for generating the `.onnx` file:
-```bash
-python pulp-frontnet/PyTorch/Scripts/QExport.py '160x32' --load-model 'pulp-frontnet/PyTorch/Models/Frontnet160x32.Q.pt' --load-trainset 'pulp-frontnet/PyTorch/Data/160x96OthersTrainsetAug.pickle' --regime pulp-frontnet/PyTorch/Scripts/regime.json
-```
+Both trajectories are stored in `hardware/frontnet_ros/data/movey.csv` and `hardware/frontnet_ros/data/capture.csv` respectively. They were generated using the [UAV Trajectories](https://github.com/whoenig/uav_trajectories.git) repository.
 
-This will create a new folder `Results/160x32/Export` in which the `Frontnet.onnx` is saved.
+To change which experiment you currently want to run, please adapt the path to the trajectory csv file [here](hardware/frontnet_ros/frontnet_ros/attack.py#177) in the attack script.
 
-For generating the flashable image, we'll utilize the Bitcraze AI deck docker image, since building depends partially on the GAP SDK.\
-Run the docker image and mount this repository
-```bash
-docker run -it -v /path/to/adversarial_frontnet/:/home/adversarial_frontnet bitcraze/aideck
-source /gap_sdk/configs/ai_deck.sh
-cd /home/
-```
+The take-off and initial positioning for both Crazyflies will be done by the attacker script.
 
-We use DORY to generate a flashable image from the `.onnx` file.
-```bash
-# clone the repository
-git clone https://github.com/pulp-platform/dory
-cd dory
-# we tested dory on this commit
-git checkout 06b1b91fe1aa77f87b3baae97ee8dcb03eef1785
-# get submodules
-git submodule update --remote --init dory/Hardware_targets/GAP8/Backend_Kernels/pulp-nn
-git submodule update --remote --init dory/Hardware_targets/GAP8/Backend_Kernels/pulp-nn-mixed
-# install DORY as pip pickage into your current python environment
-python -m pip install -e .
-```
+You are only required to enable the Frontnet network output to be used to generate new setpoints as soon as both drones are at their initial positions. 
 
-Now generate the image with the provided script:
-```bash
-python network_generate.py NEMO GAP8.GAP8_gvsoc /home/adversarial_frontnet/misc/dory_config.json --app_dir /home/adversarial_frontnet/hardware/frontnet_code/
-```
-
-TODO: Add section about adapting the source code before building!
-
-Lastly, to generate the C code and flashable image:
-```bash
-cd /home/adversarial_frontnet/hardware/frontnet_code/
-make clean all run CORE=8 platform=gvsoc
-``` -->
-
-
+For the victim that means that it is turned by yaw = -90° and hovering, for the attacker that means that it is positioned in proximity to the victim and in the field of view of the AI deck camera. You can then press the X button on the Xbox controller to enable Frontnet on the victim drone.

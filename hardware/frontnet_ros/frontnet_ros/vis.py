@@ -53,7 +53,7 @@ class VisualizationNode(Node):
 
         print(self.get_topic_names_and_types())
 
-        self.cf = "cf231"
+        self.cf = "cf8"
 
         # initalize meshcat
         self.vis = mc.Visualizer()
