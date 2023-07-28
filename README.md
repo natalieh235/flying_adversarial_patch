@@ -246,7 +246,7 @@ This script will create a PDF file of all patches and save the assignment and th
 
 You can print the patches onto a regular A4 paper. Please cut off the white borders to the left, right, and bottom. Keep at least 0.5 cm of the top border, since the paper needs to be attached to the Crazyflie.
 
-### Attaching the patches to the victim
+### Attaching the patches to the attacker drone
 ![patch attachment](doc/patch_attachment.png)
 
 For attaching the printed patches, we cut out a 12.5 cm long, thin piece of cardboard, as displayed in the image above. To secure the cardboard to the Crazyflie, we cut two 2.5 mm diameter holes 3 cm apart from each other into it.
