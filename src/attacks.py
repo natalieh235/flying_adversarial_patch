@@ -11,20 +11,20 @@ from patch_placement import place_patch
 from pathlib import Path
 
 def get_transformation(sf, tx, ty):
-    # translation_vector = torch.stack([tx, ty]).unsqueeze(0) #torch.zeros([1], device=tx.device)]).unsqueeze(0)
+    translation_vector = torch.stack([tx, ty]).unsqueeze(0) #torch.zeros([1], device=tx.device)]).unsqueeze(0)
 
-    # eye = torch.eye(2, 2).unsqueeze(0).to(sf.device)
-    # scale = eye * sf
+    eye = torch.eye(2, 2).unsqueeze(0).to(sf.device)
+    scale = eye * sf
 
     # # print(scale.shape, translation_vector.shape)
 
-    # transformation_matrix = torch.cat([scale, translation_vector], dim=2)
+    transformation_matrix = torch.cat([scale, translation_vector], dim=2)
     
-    M = torch.eye(3,3).unsqueeze(0).to(sf.device)
-    M[..., :2, :2] *= sf
-    M[..., 0, 2] = tx
-    M[..., 1, 2] = ty
-    return M.float()
+    # M = torch.eye(3,3).unsqueeze(0).to(sf.device)
+    # M[..., :2, :2] *= sf
+    # M[..., 0, 2] = tx
+    # M[..., 1, 2] = ty
+    return transformation_matrix.float()
 
 def norm_transformation(sf, tx, ty, scale_min=0.3, scale_max=0.5, tx_min=-40., tx_max=100., ty_min=-20., ty_max=70.):
     # tx_tanh = torch.tanh(tx) #* 0.8
@@ -61,8 +61,8 @@ def gen_noisy_transformations(batch_size, sf, tx, ty, scale_min=0.3, scale_max=0
     noisy_transformation_matrix = []
     for i in range(batch_size):
         sf_n = sf + np.random.normal(0.0, 0.1)
-        tx_n = tx + np.random.normal(0.0, 0.1)
-        ty_n = ty + np.random.normal(0.0, 0.1)
+        tx_n = tx + np.random.normal(0.0, 2.0)
+        ty_n = ty + np.random.normal(0.0, 2.0)
 
         scale_norm, tx_norm, ty_norm = norm_transformation(sf_n, tx_n, ty_n, scale_min, scale_max)
         matrix = get_transformation(scale_norm, tx_norm, ty_norm)
@@ -123,7 +123,7 @@ def targeted_attack_joint(dataset, patch, model, positions, assignment, targets,
                     
                     patch_batches = torch.cat([x.repeat(len(batch), 1, 1, 1) for x in patch_t[active_patches]]) # get batch_sized batches of each patch in patches, size should be batch_size*num_patches
                     batch_multi = batch.clone().repeat(len(patch_t[active_patches]), 1, 1, 1)
-                    transformations_multi = noisy_transformations.view(len(patch_t[active_patches])*len(batch), 3, 3) # reshape transformation matrices
+                    transformations_multi = noisy_transformations.view(len(patch_t[active_patches])*len(batch), 2, 3) # reshape transformation matrices
                     #print(transformations_multi.shape)
 
                     target_loss = torch.zeros(len(patch_t[active_patches]), device=patch.device)
@@ -135,7 +135,7 @@ def targeted_attack_joint(dataset, patch, model, positions, assignment, targets,
                         
                         patch_batches = torch.cat([x.repeat(len(batch), 1, 1, 1) for x in patch_t[active_patches]]) # get batch_sized batches of each patch in patches, size should be batch_size*num_patches
                         batch_multi = batch.clone().repeat(len(patch_t[active_patches]), 1, 1, 1)
-                        transformations_multi = noisy_transformations.view(len(patch_t[active_patches])*len(batch), 3, 3) # reshape transformation matrices
+                        transformations_multi = noisy_transformations.view(len(patch_t[active_patches])*len(batch), 2, 3) # reshape transformation matrices
                         # print("before patch placement:")
                         # print("transformations shape: ", transformations_multi.shape)
                         # print("patch batch shape: ", patch_batches.shape)
@@ -553,6 +553,7 @@ if __name__=="__main__":
     stats_p_all = []
 
     positions = torch.FloatTensor(len(targets), num_patches, 3, 1).uniform_(-1., 1.).to(device)
+    positions[:, :, 1:] *= 100.
 
     optimization_pos_vectors.append(positions)
 

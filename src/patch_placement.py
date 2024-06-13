@@ -270,12 +270,13 @@ def place_patch(image, patch, transformation_matrix, random_perspection=True):
 
     # new perspective grid implementation
     # can only transform single image now!
+    last_row = torch.tensor([[0, 0, 1]], device=transformation_matrix.device)
+    transformation_matrix = torch.stack([torch.cat([transformation_matrix[i], last_row]) for i in range(len(transformation_matrix))])
     inv_t_matrix = torch.inverse(transformation_matrix)
     # print("inverted matrix shape: ", inv_t_matrix.shape)
     batch_coeffs = inv_t_matrix.reshape(inv_t_matrix.shape[0], -1)[..., :-1] # perspective grid neglects last entry of matrix (which is 1)
     # print("coeffs shape: ", batch_coeffs.shape)
     batch_grid = torch.stack([_perspective_grid(coeffs, w=p_width, h=p_height, ow=i_width, oh=i_height, dtype=torch.float32, device=patch.device, center = [1., 1.]) for coeffs in batch_coeffs])
-    # print("grid shape: ", batch_grid.shape)
 
     bit_mask = torch.stack([_apply_grid_transform(m, grid, mode="nearest", fill=0) for m, grid in zip(mask, batch_grid)])
     transformed_patch = torch.stack([_apply_grid_transform(p, grid, mode="nearest", fill=0) for p, grid in zip(patch, batch_grid)])
@@ -295,7 +296,7 @@ def place_patch(image, patch, transformation_matrix, random_perspection=True):
         modified_image += perspected_patch
     else:
         # first erase all pixel values in the original image in the area of the patch
-        modified_image = image * ~bit_mask
+        modified_image = image * ~bit_mask.bool()
         # and now replace these values with the transformed patch
         modified_image += transformed_patch
 

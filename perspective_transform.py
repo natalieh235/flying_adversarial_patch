@@ -48,8 +48,10 @@ def _perspective_grid(
     output_grid = output_grid1.div_(output_grid2).sub_(center)
     return output_grid.view(1, oh, ow, 2)
 
+patch_height = 30
+patch_width = 30
 
-patch = torch.ones(1,96,160)
+patch = torch.ones(1,patch_height,patch_width)
 
 height = 96
 width= 160
@@ -72,9 +74,9 @@ width= 160
 # [ 0.,  0.,  1.]]
 # --> opencv output
 
-sf = torch.tensor(0.5).requires_grad_(True)
-tx = torch.tensor(-40.).requires_grad_(True)
-ty = torch.tensor(-20.).requires_grad_(True)
+sf = torch.tensor(2.).requires_grad_(True)
+tx = torch.tensor(0.).requires_grad_(True)
+ty = torch.tensor(0.).requires_grad_(True)
 
 M = torch.eye(3,3)
 M[:2, :2] *= sf
@@ -86,7 +88,7 @@ M_inv = torch.inverse(M)
 coeffs = M_inv.flatten()[:-1]
 
 grid = _perspective_grid(
-    coeffs, w=160, h=96, ow=width, oh=height, 
+    coeffs, w=patch_width, h=patch_height, ow=width, oh=height, 
     dtype=torch.float32, device="cpu",
     center = [1., 1.]
 )
