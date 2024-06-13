@@ -14,6 +14,7 @@ def _perspective_grid(
     device: torch.device,
     center = None,
 ) -> torch.Tensor:
+    # source: https://github.com/pytorch/pytorch/issues/100526#issuecomment-1610226058
     # https://github.com/python-pillow/Pillow/blob/4634eafe3c695a014267eefdce830b4a825beed7/
     # src/libImaging/Geometry.c#L394
 
@@ -48,17 +49,18 @@ def _perspective_grid(
     return output_grid.view(1, oh, ow, 2)
 
 
-patch = torch.ones(5,5)
+patch = torch.ones(1,96,160)
 
 height = 96
 width= 160
 
 
-start = [[0.0, 0.0], [4.0, 0.], [4., 4.], [0., 4.]]
-end = [[0.0, 0.0], [80.0, 0.], [80., 80.], [0., 80.]]
+# start = [[0.0, 0.0], [4.0, 0.], [4., 4.], [0., 4.]]
+# end = [[0.0, 0.0], [80.0, 0.], [80., 80.], [0., 80.]]
 
-coeffs = _get_perspective_coeffs(start, end)
-print(np.round(coeffs, decimals=2))
+# coeffs = _get_perspective_coeffs(start, end)
+
+# print(np.round(coeffs, decimals=2))
 
 # output matrix:
 # [[0.05, 0.  , 0.  ],
@@ -70,16 +72,28 @@ print(np.round(coeffs, decimals=2))
 # [ 0.,  0.,  1.]]
 # --> opencv output
 
+sf = torch.tensor(0.5).requires_grad_(True)
+tx = torch.tensor(-40.).requires_grad_(True)
+ty = torch.tensor(-20.).requires_grad_(True)
+
+M = torch.eye(3,3)
+M[:2, :2] *= sf
+M[0, 2] = tx
+M[1, 2] = ty
+print(M)
+
+M_inv = torch.inverse(M)
+coeffs = M_inv.flatten()[:-1]
 
 grid = _perspective_grid(
-    coeffs, w=5, h=5, ow=width, oh=height, 
+    coeffs, w=160, h=96, ow=width, oh=height, 
     dtype=torch.float32, device="cpu",
     center = [1., 1.]
 )
 
 print(grid.shape)
 
-output = _apply_grid_transform(patch[None, ...], grid, "nearest", 0)
+output = _apply_grid_transform(patch, grid, "nearest", 0)
 
 import matplotlib.pyplot as plt
 plt.imshow(output[0].numpy(), cmap='gray')
