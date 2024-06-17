@@ -113,13 +113,14 @@ def _perspective_grid(
     # x_out = (coeffs[0] * x + coeffs[1] * y + coeffs[2]) / (coeffs[6] * x + coeffs[7] * y + 1)
     # y_out = (coeffs[3] * x + coeffs[4] * y + coeffs[5]) / (coeffs[6] * x + coeffs[7] * y + 1)
     #
-    theta1 = torch.tensor(
-        [[[coeffs[0], coeffs[1], coeffs[2]], [coeffs[3], coeffs[4], coeffs[5]]]], dtype=dtype, device=device
-    )
-    theta2 = torch.tensor([[[coeffs[6], coeffs[7], 1.0], [coeffs[6], coeffs[7], 1.0]]], dtype=dtype, device=device)
+    batch_size = coeffs.shape[0]
+    theta1 = coeffs[..., :6].reshape(batch_size, 2, 3)
+
+    theta2 = coeffs[..., 6:].repeat_interleave(2, dim=0) # theta2 is a matrix of shape [2, 3], it is the last row of the original transformation matrix repeated 2x
+    theta2 = theta2.reshape(batch_size, 2, 3) # reshape from [batch_size*2, 3] to [batch_size, 2, 3] 
 
     d = 0.5
-    base_grid = torch.empty(1, oh, ow, 3, dtype=dtype, device=device)
+    base_grid = torch.empty(batch_size, oh, ow, 3, dtype=dtype, device=device)
     x_grid = torch.linspace(d, ow + d - 1.0, steps=ow, device=device, dtype=dtype)
     base_grid[..., 0].copy_(x_grid)
     y_grid = torch.linspace(d, oh + d - 1.0, steps=oh, device=device, dtype=dtype).unsqueeze_(-1)
@@ -127,7 +128,7 @@ def _perspective_grid(
     base_grid[..., 2].fill_(1)
 
     rescaled_theta1 = theta1.transpose(1, 2).div_(torch.tensor([0.5 * w, 0.5 * h], dtype=dtype, device=device))
-    shape = (1, oh * ow, 3)
+    shape = (batch_size, oh * ow, 3)
     output_grid1 = base_grid.view(shape).bmm(rescaled_theta1)
     output_grid2 = base_grid.view(shape).bmm(theta2.transpose(1, 2))
 
@@ -137,7 +138,7 @@ def _perspective_grid(
         center = 1.0
 
     output_grid = output_grid1.div_(output_grid2).sub_(center)
-    return output_grid.view(1, oh, ow, 2)
+    return output_grid.view(batch_size, oh, ow, 2)
     
 def get_bit_mask(patch_size, image_size, grid):
     """"
@@ -274,12 +275,14 @@ def place_patch(image, patch, transformation_matrix, random_perspection=True):
     transformation_matrix = torch.stack([torch.cat([transformation_matrix[i], last_row]) for i in range(len(transformation_matrix))])
     inv_t_matrix = torch.inverse(transformation_matrix)
     # print("inverted matrix shape: ", inv_t_matrix.shape)
-    batch_coeffs = inv_t_matrix.reshape(inv_t_matrix.shape[0], -1)[..., :-1] # perspective grid neglects last entry of matrix (which is 1)
+    batch_coeffs = inv_t_matrix.reshape(inv_t_matrix.shape[0], -1) # flatten matrices
     # print("coeffs shape: ", batch_coeffs.shape)
-    batch_grid = torch.stack([_perspective_grid(coeffs, w=p_width, h=p_height, ow=i_width, oh=i_height, dtype=torch.float32, device=patch.device, center = [1., 1.]) for coeffs in batch_coeffs])
+    batch_grid = _perspective_grid(batch_coeffs, w=p_width, h=p_height, ow=i_width, oh=i_height, dtype=torch.float32, device=patch.device, center = [1., 1.])
 
-    bit_mask = torch.stack([_apply_grid_transform(m, grid, mode="nearest", fill=0) for m, grid in zip(mask, batch_grid)])
-    transformed_patch = torch.stack([_apply_grid_transform(p, grid, mode="nearest", fill=0) for p, grid in zip(patch, batch_grid)])
+    # bit_mask = torch.stack([_apply_grid_transform(m, grid, mode="nearest", fill=0) for m, grid in zip(mask, batch_grid)])
+    # transformed_patch = torch.stack([_apply_grid_transform(p, grid, mode="nearest", fill=0) for p, grid in zip(patch, batch_grid)])
+    bit_mask = grid_sample(mask, batch_grid, mode='nearest', align_corners=False, padding_mode='zeros').bool()
+    transformed_patch = grid_sample(patch, batch_grid, mode='nearest', align_corners=False, padding_mode='zeros')
 
     # print("masks shape: ", bit_mask.shape)
     # print("patches shape: ", transformed_patch.shape)

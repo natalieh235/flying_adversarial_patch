@@ -28,10 +28,7 @@ def _perspective_grid(
     batch_size = coeffs.shape[0]
     theta1 = coeffs[..., :6].reshape(batch_size, 2, 3)
 
-    print(coeffs[..., 6:], coeffs[..., 6:].shape)
-    theta2 = torch.cat((coeffs[..., 6:], torch.ones(batch_size, 1)), dim=1).repeat_interleave(2, dim=0).reshape(batch_size, 2, 3)
-    print(theta2)
-    print(theta2.shape)
+    theta2 = coeffs[..., 6:].repeat_interleave(2, dim=0).reshape(batch_size, 2, 3)
 
     d = 0.5
     base_grid = torch.empty(batch_size, oh, ow, 3, dtype=dtype, device=device)
@@ -91,7 +88,7 @@ M[1, 2] = ty
 print(M)
 
 M_inv = torch.inverse(M)
-coeffs = M_inv.flatten()[:-1]
+coeffs = M_inv.flatten()
 
 sf = torch.tensor(1.).requires_grad_(True)
 tx = torch.tensor(80.).requires_grad_(True)
@@ -106,7 +103,7 @@ print(M)
 
 M_inv = torch.inverse(M)
 
-coeffs = torch.vstack([coeffs, M_inv.flatten()[:-1]])
+coeffs = torch.vstack([coeffs, M_inv.flatten()])
 print(coeffs, coeffs.shape)
 
 grid = _perspective_grid(
@@ -118,7 +115,7 @@ grid = _perspective_grid(
 print(grid.shape)
 
 #output = _apply_grid_transform(patch, grid, "nearest", 0)
-output = torch.nn.functional.grid_sample(patch, grid, "nearest", 'zeros', align_corners=False)
+output = torch.nn.functional.grid_sample(patch, grid, "nearest", 'zeros', align_corners=True)
 print(output.shape)
 
 import matplotlib.pyplot as plt
