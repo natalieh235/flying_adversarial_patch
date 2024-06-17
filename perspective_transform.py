@@ -22,10 +22,11 @@ def _perspective_grid(
     # x_out = (coeffs[0] * x + coeffs[1] * y + coeffs[2]) / (coeffs[6] * x + coeffs[7] * y + 1)
     # y_out = (coeffs[3] * x + coeffs[4] * y + coeffs[5]) / (coeffs[6] * x + coeffs[7] * y + 1)
     #
-    theta1 = torch.tensor(
-        [[[coeffs[0], coeffs[1], coeffs[2]], [coeffs[3], coeffs[4], coeffs[5]]]], dtype=dtype, device=device
-    )
-    theta2 = torch.tensor([[[coeffs[6], coeffs[7], 1.0], [coeffs[6], coeffs[7], 1.0]]], dtype=dtype, device=device)
+    # theta1 = torch.tensor(
+    #     [[[coeffs[0], coeffs[1], coeffs[2]], [coeffs[3], coeffs[4], coeffs[5]]]], dtype=dtype, device=device
+    # )
+    theta1 = coeffs[:6].reshape(1, 2, 3)
+    theta2 = torch.cat((coeffs[6:], torch.tensor([1.])), dim=0).repeat(2, 1).unsqueeze(0)
 
     d = 0.5
     base_grid = torch.empty(1, oh, ow, 3, dtype=dtype, device=device)
@@ -51,7 +52,7 @@ def _perspective_grid(
 patch_height = 30
 patch_width = 30
 
-patch = torch.ones(1,patch_height,patch_width)
+patch = torch.ones(1, 1,patch_height,patch_width)
 
 height = 96
 width= 160
@@ -95,8 +96,10 @@ grid = _perspective_grid(
 
 print(grid.shape)
 
-output = _apply_grid_transform(patch, grid, "nearest", 0)
+#output = _apply_grid_transform(patch, grid, "nearest", 0)
+output = torch.nn.functional.grid_sample(patch, grid, "nearest", 'zeros', align_corners=False)
+print(output.shape)
 
 import matplotlib.pyplot as plt
-plt.imshow(output[0].numpy(), cmap='gray')
+plt.imshow(output[0][0].detach().numpy(), cmap='gray')
 plt.savefig('example.png')
