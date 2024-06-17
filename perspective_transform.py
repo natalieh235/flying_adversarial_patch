@@ -5,6 +5,7 @@ from torchvision.transforms.v2.functional._geometry import _get_inverse_affine_m
 
 from typing import List
 
+from src.util import load_model
 
 def _perspective_grid(
     coeffs: List[float], 
@@ -51,75 +52,116 @@ def _perspective_grid(
     output_grid = output_grid1.div_(output_grid2).sub_(center)
     return output_grid.view(batch_size, oh, ow, 2)
 
-patch_height = 30
-patch_width = 30
-
-patch = torch.ones(2, 1,patch_height,patch_width)
-
-height = 96
-width= 160
 
 
-# start = [[0.0, 0.0], [4.0, 0.], [4., 4.], [0., 4.]]
-# end = [[0.0, 0.0], [80.0, 0.], [80., 80.], [0., 80.]]
 
-# coeffs = _get_perspective_coeffs(start, end)
 
-# print(np.round(coeffs, decimals=2))
+if __name__=="__main__":
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model_path = 'pulp-frontnet/PyTorch/Models/Frontnet160x32.pt'
+    model_config = '160x32'
+    model = load_model(path=model_path, device=device, config=model_config)
 
-# output matrix:
-# [[0.05, 0.  , 0.  ],
-# [0.  , 0.05, 0.  ],
-# [0.  , 0.  , 1.  ]])
-# which is the inverse of:
-# [[20.,  0.,  0.],
-# [ 0., 20.,  0.],
-# [ 0.,  0.,  1.]]
-# --> opencv output
 
-sf = torch.tensor(2.).requires_grad_(True)
-tx = torch.tensor(30.).requires_grad_(True)
-ty = torch.tensor(60.).requires_grad_(True)
+    target = torch.tensor([[1., 1., 0.]], device=device)
+    print("Target: ", target)
 
-M = torch.eye(3,3)
-M[:2, :2] *= sf
-M[0, 2] = tx
-M[1, 2] = ty
-print(M)
+    patch_height = 30   
+    patch_width = 30
 
-M_inv = torch.inverse(M)
-coeffs = M_inv.flatten()
+    patch = torch.ones(1, 1,patch_height,patch_width, device=device) * 255.
 
-sf = torch.tensor(1.).requires_grad_(True)
-tx = torch.tensor(80.).requires_grad_(True)
-ty = torch.tensor(10.).requires_grad_(True)
+    height = 96
+    width= 160
 
-M = torch.eye(3,3)
-M[:2, :2] *= sf
-M[0, 2] = tx
-M[1, 2] = ty
-#M[2, :2] = torch.tensor([0.5, 0.6]) 
-print(M)
+    base_img = torch.rand(1, 1, height, width, device=device) * 255.
+    x, y, z, yaw = model(base_img)
+    out_base = torch.hstack([x, y, z, yaw])
+    print("Output original random image: ", out_base)
 
-M_inv = torch.inverse(M)
 
-coeffs = torch.vstack([coeffs, M_inv.flatten()])
-print(coeffs, coeffs.shape)
 
-grid = _perspective_grid(
-    coeffs, w=patch_width, h=patch_height, ow=width, oh=height, 
-    dtype=torch.float32, device="cpu",
-    center = [1., 1.]
-)
 
-print(grid.shape)
+    # start = [[0.0, 0.0], [4.0, 0.], [4., 4.], [0., 4.]]
+    # end = [[0.0, 0.0], [80.0, 0.], [80., 80.], [0., 80.]]
 
-#output = _apply_grid_transform(patch, grid, "nearest", 0)
-output = torch.nn.functional.grid_sample(patch, grid, "nearest", 'zeros', align_corners=True)
-print(output.shape)
+    # coeffs = _get_perspective_coeffs(start, end)
 
-import matplotlib.pyplot as plt
-fig, axs = plt.subplots(1, 2, constrained_layout=True)
-axs[0].imshow(output[0][0].detach().numpy(), cmap='gray')
-axs[1].imshow(output[1][0].detach().numpy(), cmap='gray')
-plt.savefig('example.png')
+    # print(np.round(coeffs, decimals=2))
+
+    # output matrix:
+    # [[0.05, 0.  , 0.  ],
+    # [0.  , 0.05, 0.  ],
+    # [0.  , 0.  , 1.  ]])
+    # which is the inverse of:
+    # [[20.,  0.,  0.],
+    # [ 0., 20.,  0.],
+    # [ 0.,  0.,  1.]]
+    # --> opencv output
+
+    sf = torch.tensor(2., device=device).requires_grad_(True)
+    tx = torch.tensor(30., device=device).requires_grad_(True)
+    ty = torch.tensor(60., device=device).requires_grad_(True)
+
+    opt = torch.optim.Adam([sf, tx, ty], lr=0.001)
+
+    M = torch.eye(3,3, device=device)
+    M[:2, :2] *= sf
+    M[0, 2] = tx
+    M[1, 2] = ty
+    # print(M)
+
+    M_inv = torch.inverse(M)
+    coeffs = M_inv.flatten().unsqueeze(0)
+
+    # sf = torch.tensor(1.).requires_grad_(True)
+    # tx = torch.tensor(80.).requires_grad_(True)
+    # ty = torch.tensor(10.).requires_grad_(True)
+
+    # M = torch.eye(3,3)
+    # M[:2, :2] *= sf
+    # M[0, 2] = tx
+    # M[1, 2] = ty
+    # #M[2, :2] = torch.tensor([0.5, 0.6]) 
+    # print(M)
+
+    # M_inv = torch.inverse(M)
+
+    # coeffs = torch.vstack([coeffs, M_inv.flatten()])
+    # print(coeffs, coeffs.shape)
+
+    grid = _perspective_grid(
+        coeffs, w=patch_width, h=patch_height, ow=width, oh=height, 
+        dtype=torch.float32, device=device,
+        center = [1., 1.]
+    )
+
+    # print(grid.shape)
+
+    #output = _apply_grid_transform(patch, grid, "nearest", 0)
+    mask = torch.ones_like(patch, device=patch.device)
+    perspected_patch = torch.nn.functional.grid_sample(patch, grid, "nearest", 'zeros', align_corners=True)
+    bit_mask = torch.nn.functional.grid_sample(mask, grid, "nearest", 'zeros', align_corners=True)
+    
+    modified_image = base_img * ~bit_mask.bool()
+    # and now replace these values with the transformed patch
+    modified_image += perspected_patch
+
+    out_mod = torch.hstack(model(perspected_patch))
+    print("Output with patch: ", out_mod)
+
+    loss = torch.nn.functional.mse_loss(out_mod[..., :3], target)
+    print("Loss: ", loss)
+
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
+
+    print("-- sf, tx, ty after opt --")
+    print(sf, tx, ty)
+
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(1, modified_image.shape[0], constrained_layout=True)
+    for i in range(modified_image.shape[0]):
+        axs.imshow(modified_image[i][0].detach().cpu().numpy(), cmap='gray')
+    plt.savefig('example.png')
