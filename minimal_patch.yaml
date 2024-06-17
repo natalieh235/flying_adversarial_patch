@@ -1,4 +1,4 @@
-path: "minimal_patches/single_random/160x96/"
+path: "minimal_patches/single_random/10x10/"
 # +x is distance
 # +y is left
 # +z is top
@@ -14,17 +14,17 @@ stlc: # small-time locally controllability
 lr_pos: 0.001
 lr_patch: 0.001
 prob_weight: 1.0
-num_hl_iter: 15
+num_hl_iter: 100
 num_pos_restarts: 3
 num_pos_epochs: 1
 num_patch_epochs: 1
 batch_size: 32
 num_patches: 1
 scale_min: 0.
-scale_max: 0.5
+scale_max: 8.
 patch: 
   mode: 'random'  # face, white, random
-  size: [96, 160] # patch size in [height, width]
+  size: [5, 5] # patch size in [height, width]
   path: 'src/custom_patches/custom_patch_96x160.npy' # if mode == 'face' set a path, otherwise path is ignored
 mode: "joint" # fixed, joint, split, hybrid
 quantized: false

@@ -281,8 +281,8 @@ def place_patch(image, patch, transformation_matrix, random_perspection=True):
 
     # bit_mask = torch.stack([_apply_grid_transform(m, grid, mode="nearest", fill=0) for m, grid in zip(mask, batch_grid)])
     # transformed_patch = torch.stack([_apply_grid_transform(p, grid, mode="nearest", fill=0) for p, grid in zip(patch, batch_grid)])
-    bit_mask = grid_sample(mask, batch_grid, mode='nearest', align_corners=False, padding_mode='zeros').bool()
-    transformed_patch = grid_sample(patch, batch_grid, mode='nearest', align_corners=False, padding_mode='zeros')
+    bit_mask = grid_sample(mask, batch_grid, mode='bilinear', align_corners=False, padding_mode='zeros').bool()
+    transformed_patch = grid_sample(patch, batch_grid, mode='bilinear', align_corners=False, padding_mode='zeros')
 
     # print("masks shape: ", bit_mask.shape)
     # print("patches shape: ", transformed_patch.shape)
