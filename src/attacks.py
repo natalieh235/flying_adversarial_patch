@@ -61,8 +61,8 @@ def gen_noisy_transformations(batch_size, sf, tx, ty, scale_min=0.3, scale_max=0
     noisy_transformation_matrix = []
     for i in range(batch_size):
         sf_n = sf + np.random.normal(0.0, 0.1)
-        tx_n = tx + np.random.normal(0.0, 2.0)
-        ty_n = ty + np.random.normal(0.0, 2.0)
+        tx_n = tx + np.random.normal(0.0, 10.0)
+        ty_n = ty + np.random.normal(0.0, 10.0)
 
         scale_norm, tx_norm, ty_norm = norm_transformation(sf_n, tx_n, ty_n, scale_min, scale_max)
         matrix = get_transformation(scale_norm, tx_norm, ty_norm)
@@ -552,8 +552,11 @@ if __name__=="__main__":
     stats_all = []
     stats_p_all = []
 
-    positions = torch.FloatTensor(len(targets), num_patches, 3, 1).uniform_(-1., 1.).to(device)
-    positions[:, :, 1:] *= 100.
+    #positions = torch.FloatTensor(len(targets), num_patches, 3, 1).uniform_(-1., 1.).to(device)
+    sf = torch.FloatTensor(len(targets), num_patches, 1).uniform_(-1, 1.).to(device)
+    tx = torch.FloatTensor(len(targets), num_patches, 1).uniform_(-10, 80.).to(device)
+    ty = torch.FloatTensor(len(targets), num_patches, 1).uniform_(-10, 80.).to(device)
+    positions = torch.stack([sf, tx, ty]).moveaxis(0, 2)
 
     optimization_pos_vectors.append(positions)
 
