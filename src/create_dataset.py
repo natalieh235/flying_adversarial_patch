@@ -24,7 +24,7 @@ if __name__=="__main__":
         targets = np.array(targets, dtype=float).T
         # targets = torch.from_numpy(targets).to(device).float()
 
-        number_targets = np.random.randint(1, 3)
+        number_targets = np.random.randint(1, 4)
 
         # generate random amount of targets in reasonable ranges
         random_target_x = np.random.uniform(0,2,number_targets)
