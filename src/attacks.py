@@ -453,8 +453,6 @@ def calc_eval_loss(dataset, patch, transformation_matrix, model, target, quantiz
 
     return actual_loss
 
-
-
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--file', default='settings.yaml')
